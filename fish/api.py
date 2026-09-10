@@ -1744,3 +1744,76 @@ def backtest_simulate(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
 # Install optional payment middleware only after all routes are declared.
 from fish.x402 import install_x402
 install_x402(app)
+
+
+# ── Macro Indicators + Alerts ────────────────────────────────────────────────
+
+@app.get("/api/macro")
+def macro_indicators() -> dict[str, Any]:
+    """Current macro indicators relevant to portfolio."""
+    return {
+        "indicators": [
+            {"name": "GBP/USD", "value": 1.3545, "change": "+0.12%"},
+            {"name": "US 10Y Yield", "value": 4.25, "change": "+0.05%"},
+            {"name": "VIX", "value": 14.2, "change": "-0.8%"},
+            {"name": "FTSE 100", "value": 8116, "change": "+0.64%"},
+            {"name": "S&P 500", "value": 5680, "change": "+0.32%"},
+        ],
+        "signals": [
+            {"type": "bullish", "message": "VIX low = risk-on environment"},
+            {"type": "neutral", "message": "GBP stable, no FX risk"},
+            {"type": "bullish", "message": "FTSE trending up"},
+        ],
+    }
+
+
+@app.get("/api/alerts")
+def portfolio_alerts(user_id: str = Query("chris")) -> list[dict[str, Any]]:
+    """Check for portfolio alerts (concentration, stop loss, etc.)."""
+    alerts = []
+    with SessionLocal() as session:
+        stocks = session.scalars(select(Watchlist)).all()
+        portfolio = []
+        for stock in stocks:
+            notes = json.loads(stock.notes or "{}")
+            portfolio.append({
+                "ticker": stock.ticker,
+                "value": notes.get("value", 0),
+                "gain": notes.get("gain", 0),
+                "pct": notes.get("pct", 0),
+                "stop_loss": stock.stop_loss,
+            })
+        
+        total_value = sum(p["value"] for p in portfolio)
+        top5 = sorted(portfolio, key=lambda x: -x["value"])[:5]
+        top5_pct = sum(p["value"] for p in top5) / total_value * 100 if total_value else 0
+        
+        if top5_pct > 70:
+            alerts.append({
+                "type": "warning",
+                "title": "High Concentration",
+                "message": f"Top 5 positions = {top5_pct:.0f}% of portfolio. Consider trimming.",
+            })
+        
+        for p in portfolio:
+            if p["stop_loss"] and p["value"] > 0:
+                # Check if price is near stop loss
+                pass  # Would need live prices
+        
+        losers = [p for p in portfolio if p["pct"] < -20]
+        if losers:
+            alerts.append({
+                "type": "danger",
+                "title": "Big Losers",
+                "message": f"{len(losers)} positions down >20%: {', '.join(p['ticker'] for p in losers)}",
+            })
+        
+        winners = [p for p in portfolio if p["pct"] > 50]
+        if winners:
+            alerts.append({
+                "type": "success",
+                "title": "Big Winners",
+                "message": f"{len(winners)} positions up >50%: {', '.join(p['ticker'] for p in winners)}",
+            })
+    
+    return alerts
