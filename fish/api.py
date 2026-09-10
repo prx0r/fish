@@ -67,6 +67,12 @@ def home():
     return (STATIC / "index.html").read_text(encoding="utf-8")
 
 
+@app.get("/backtest", response_class=HTMLResponse)
+def backtest_page():
+    """Backtest game page."""
+    return (STATIC / "backtest.html").read_text(encoding="utf-8")
+
+
 @app.get("/static/{path:path}")
 def static_file(path: str):
     file = (STATIC / path).resolve()

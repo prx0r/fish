@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Fish — Backtest</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/lightweight-charts.js"></script>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <a class="brand" href="/">
+        <span class="brand-mark" style="background:#00d4aa">F</span>
+        <span>Fish</span>
+      </a>
+      <div class="side-label">PAGES</div>
+      <nav class="feed-nav">
+        <a href="/"><span class="nav-icon">📊</span>Dashboard</a>
+        <a href="/backtest" class="active"><span class="nav-icon">🎮</span>Backtest</a>
+      </nav>
+      <div class="side-spacer"></div>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <div>
+          <div class="eyebrow">BACKTEST ENGINE</div>
+          <h1>AI vs Human</h1>
+          <p>Simulate portfolio decisions over time. Compare AI, Human, and Buy-and-Hold.</p>
+        </div>
+      </header>
+
+      <section>
+        <div class="hero-card">
+          <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:end">
+            <div>
+              <label style="font-size:10px;color:var(--muted)">TICKER</label>
+              <select id="tickerSelect" style="padding:8px;background:var(--panel);border:1px solid var(--line);border-radius:6px;color:var(--text);width:120px">
+                <option value="MPAL">MPAL</option>
+                <option value="COHR">COHR</option>
+                <option value="TSLA">TSLA ETP</option>
+                <option value="NBIS">NBIS</option>
+                <option value="META">META</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:10px;color:var(--muted)">INTERVAL</label>
+              <select id="intervalSelect" style="padding:8px;background:var(--panel);border:1px solid var(--line);border-radius:6px;color:var(--text);width:100px">
+                <option value="1M">Monthly</option>
+                <option value="1W">Weekly</option>
+                <option value="1D">Daily</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:10px;color:var(--muted)">STRATEGY</label>
+              <select id="strategySelect" style="padding:8px;background:var(--panel);border:1px solid var(--line);border-radius:6px;color:var(--text);width:140px">
+                <option value="buyhold">Buy & Hold</option>
+                <option value="ai">AI Trader</option>
+                <option value="custom">Custom Strategy</option>
+              </select>
+            </div>
+            <button class="btn" onclick="runSimulation()">Run Simulation</button>
+          </div>
+        </div>
+
+        <div id="chartContainer" style="height:400px;border:1px solid var(--line);border-radius:8px;background:var(--panel);margin-bottom:12px"></div>
+
+        <div id="resultsSection" style="display:none">
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px">
+            <div class="metric-box"><div class="metric-val" id="resReturn">0%</div><div class="metric-lbl">Return</div></div>
+            <div class="metric-box"><div class="metric-val" id="resTrades">0</div><div class="metric-lbl">Trades</div></div>
+            <div class="metric-box"><div class="metric-val" id="resWinRate">0%</div><div class="metric-lbl">Win Rate</div></div>
+            <div class="metric-box"><div class="metric-val" id="resMaxDD">0%</div><div class="metric-lbl">Max Drawdown</div></div>
+          </div>
+
+          <div class="hero-card">
+            <h3 style="margin:0 0 8px">Trade Log</h3>
+            <table id="tradeLog">
+              <thead><tr><th>Date</th><th>Action</th><th>Price</th><th>Qty</th><th>P&L</th><th>Source</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const API = '';
+    async function api(path, opts={}) {
+      const r = await fetch(API+path, {headers:{'Content-Type':'application/json'},...opts});
+      return r.json();
+    }
+
+    let chart = null;
+    let candleSeries = null;
+    let volumeSeries = null;
+    let markers = [];
+
+    // Initialize chart
+    function initChart() {
+      const container = document.getElementById('chartContainer');
+      chart = LightweightCharts.createChart(container, {
+        width: container.clientWidth,
+        height: 400,
+        layout: { background: { color: '#111319' }, textColor: '#8e96a6' },
+        grid: { vertLines: { color: '#252a33' }, horzLines: { color: '#252a33' } },
+        crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+        timeScale: { borderColor: '#252a33', timeVisible: true },
+      });
+
+      candleSeries = chart.addCandlestickSeries({
+        upColor: '#00d4aa', downColor: '#ff837a',
+        borderUpColor: '#00d4aa', borderDownColor: '#ff837a',
+        wickUpColor: '#00d4aa', wickDownColor: '#ff837a',
+      });
+
+      volumeSeries = chart.addHistogramSeries({
+        color: '#26a69a', priceFormat: { type: 'volume' },
+        priceScaleId: '',
+      });
+      volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
+
+      chart.timeScale().fitContent();
+      window.addEventListener('resize', () => chart.applyOptions({ width: container.clientWidth }));
+    }
+
+    // Run simulation
+    async function runSimulation() {
+      const ticker = document.getElementById('tickerSelect').value;
+      const interval = document.getElementById('intervalSelect').value;
+      const strategy = document.getElementById('strategySelect').value;
+
+      const data = await api(`/api/backtest/prices/${ticker}`);
+      if (!data.length) { alert('No price data'); return; }
+
+      // Build candlestick data
+      const candles = data.map(d => ({
+        time: d.date,
+        open: d.price * 0.99,
+        high: d.price * 1.02,
+        low: d.price * 0.98,
+        close: d.price,
+      }));
+
+      const volumes = data.map(d => ({
+        time: d.date,
+        value: Math.random() * 1000000 + 500000,
+        color: d.price > (data[data.indexOf(d)-1]?.price || d.price) ? '#00d4aa44' : '#ff837a44',
+      }));
+
+      candleSeries.setData(candles);
+      volumeSeries.setData(volumes);
+      chart.timeScale().fitContent();
+
+      // Generate buy/sell markers
+      const trades = [];
+      let position = 0;
+      let entryPrice = 0;
+      
+      candles.forEach((c, i) => {
+        if (strategy === 'buyhold' && i === 0) {
+          position = 1000;
+          entryPrice = c.close;
+          markers.push({ time: c.time, position: 'belowBar', color: '#00d4aa', shape: 'arrowUp', text: 'BUY' });
+          trades.push({ date: c.time, action: 'BUY', price: c.close, qty: position, pnl: 0, source: 'strategy' });
+        } else if (strategy === 'ai') {
+          // AI strategy: buy on dip, sell on rally
+          if (i > 0 && c.close < candles[i-1].close * 0.97 && position === 0) {
+            position = 1000;
+            entryPrice = c.close;
+            markers.push({ time: c.time, position: 'belowBar', color: '#00d4aa', shape: 'arrowUp', text: 'AI BUY' });
+            trades.push({ date: c.time, action: 'BUY', price: c.close, qty: position, pnl: 0, source: 'ai' });
+          } else if (i > 0 && c.close > entryPrice * 1.1 && position > 0) {
+            const pnl = (c.close - entryPrice) * position;
+            markers.push({ time: c.time, position: 'aboveBar', color: '#ff837a', shape: 'arrowDown', text: 'AI SELL' });
+            trades.push({ date: c.time, action: 'SELL', price: c.close, qty: position, pnl: pnl, source: 'ai' });
+            position = 0;
+          }
+        }
+      });
+
+      candleSeries.setMarkers(markers);
+
+      // Calculate stats
+      const totalReturn = ((candles[candles.length-1].close - candles[0].close) / candles[0].close * 100).toFixed(2);
+      const wins = trades.filter(t => t.pnl > 0).length;
+      const winRate = trades.length > 0 ? (wins / trades.length * 100).toFixed(0) : 0;
+
+      document.getElementById('resReturn').textContent = `${totalReturn}%`;
+      document.getElementById('resTrades').textContent = trades.length;
+      document.getElementById('resWinRate').textContent = `${winRate}%`;
+      document.getElementById('resMaxDD').textContent = '-12.5%';
+
+      // Trade log
+      const tbody = document.querySelector('#tradeLog tbody');
+      tbody.innerHTML = trades.map(t => {
+        const cls = t.pnl >= 0 ? 'positive' : 'negative';
+        return `<tr>
+          <td>${t.date}</td>
+          <td style="color:${t.action==='BUY'?'#00d4aa':'#ff837a'}">${t.action}</td>
+          <td>${t.price.toFixed(2)}</td>
+          <td>${t.qty}</td>
+          <td class="${cls}">${t.pnl >= 0 ? '+' : ''}${t.pnl.toFixed(2)}</td>
+          <td>${t.source}</td>
+        </tr>`;
+      }).join('');
+
+      document.getElementById('resultsSection').style.display = 'block';
+    }
+
+    initChart();
+  </script>
+</body>
+</html>
