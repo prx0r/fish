@@ -107,6 +107,34 @@ def _compute_ensemble_forecast(bars: list[dict]) -> dict:
     direction = 'LONG' if consensus > 0.6 else ('SHORT' if consensus < 0.4 else 'FLAT')
     confidence = abs(consensus - 0.5) * 2  # 0 at 50%, 1 at 0% or 100%
 
+    # Aggregate by animal
+    ANIMAL_MAP = {}
+    for n in BASELINE_STRATEGIES:
+        from fish.services.baselines import STRATEGY_META as _SM
+        ANIMAL_MAP[n] = _SM.get(n, {}).get('animal', 'Unknown')
+    for n in FOX_STRATEGIES: ANIMAL_MAP[n] = 'Fox'
+    for n in SHARK_STRATEGIES: ANIMAL_MAP[n] = 'Shark'
+    for n in HEDGEHOG_STRATEGIES: ANIMAL_MAP[n] = 'Hedgehog'
+    for n in WOLF_STRATEGIES: ANIMAL_MAP[n] = 'Wolf'
+
+    animal_votes = {}
+    for strat_name, vote in strategy_votes.items():
+        animal = ANIMAL_MAP.get(strat_name, 'Unknown')
+        animal_votes.setdefault(animal, {'long': 0, 'short': 0, 'flat': 0, 'total': 0})
+        animal_votes[animal][vote.lower()] += 1
+        animal_votes[animal]['total'] += 1
+
+    animal_summary = {}
+    for animal, counts in animal_votes.items():
+        net = counts['long'] - counts['short']
+        animal_summary[animal] = {
+            'direction': 'LONG' if net > 0 else ('SHORT' if net < 0 else 'FLAT'),
+            'net': net,
+            'long': counts['long'],
+            'short': counts['short'],
+            'total': counts['total'],
+        }
+
     # Compute simple forecast distribution from recent returns
     closes = [b['close'] for b in bars]
     returns_1d = (closes[-1] - closes[-2]) / closes[-2] if len(closes) > 1 else 0
@@ -132,6 +160,7 @@ def _compute_ensemble_forecast(bars: list[dict]) -> dict:
         'votes_short': short_count,
         'total': total,
         'strategy_votes': strategy_votes,
+        'animal_summary': animal_summary,
         'forecast': {
             '1d': {'p_up': round(p_up, 3), 'expected': round(returns_1d * 100, 2)},
             '5d': {'p_up': round(p_up * 0.95 + 0.025, 3), 'expected': round(returns_5d * 100, 2)},
@@ -170,6 +199,8 @@ class GameForecast:
     vol_20d: float
     returns: dict
     data_hash: str  # Hash of input bars for reproducibility
+    animal_summary: dict = field(default_factory=dict)
+    strategy_votes: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -274,6 +305,8 @@ def create_episode(
             vol_20d=forecast_data['vol_20d'],
             returns=forecast_data['returns'],
             data_hash=bars_hash,
+            animal_summary=forecast_data.get('animal_summary', {}),
+            strategy_votes=forecast_data.get('strategy_votes', {}),
         )
 
         step = GameStep(
@@ -330,6 +363,8 @@ def get_episode_state(episode_id: str) -> dict | None:
             'forecast': f.forecast,
             'vol_20d': f.vol_20d,
             'recent_returns': f.returns,
+            'animal_summary': f.animal_summary,
+            'strategy_votes': f.strategy_votes,
         },
         'player_decision': None,  # Not yet made
         'outcome': None,  # Not yet revealed

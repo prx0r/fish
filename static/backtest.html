@@ -158,6 +158,7 @@
                 <span class="vote-chip" id="fishVotesShort">0S</span>
                 <span class="vote-chip" id="fishVotesTotal">0 total</span>
               </div>
+              <div id="animalBreakdown" style="margin-top:10px"></div>
               <div class="forecast-grid">
                 <div class="forecast-cell"><div class="lbl">1d P(up)</div><div class="val" id="fc1d">-</div></div>
                 <div class="forecast-cell"><div class="lbl">20d P(up)</div><div class="val" id="fc20d">-</div></div>
@@ -340,6 +341,25 @@ async function loadState() {
   document.getElementById('fishVotesLong').textContent = s.fish.votes_long + 'L';
   document.getElementById('fishVotesShort').textContent = s.fish.votes_short + 'S';
   document.getElementById('fishVotesTotal').textContent = s.fish.votes_total + ' total';
+
+  // Animal breakdown
+  const animals = s.fish.animal_summary || {};
+  const animalEl = document.getElementById('animalBreakdown');
+  const animalIcons = {Turtle:'🐢',Bull:'🐂',Bear:'🐻',Fox:'🦊',Shark:'🦈',Hedgehog:'🦔',Wolf:'🐺'};
+  const animalColors = {LONG:'#00d4aa',SHORT:'#ff837a',FLAT:'#8e96a6'};
+  let animalHTML = '<div style="display:flex;flex-wrap:wrap;gap:6px">';
+  for (const [animal, data] of Object.entries(animals)) {
+    const icon = animalIcons[animal] || '❓';
+    const color = animalColors[data.direction] || '#8e96a6';
+    const sign = data.net > 0 ? '+' : data.net < 0 ? '' : '±';
+    animalHTML += `<div style="display:flex;align-items:center;gap:4px;padding:4px 8px;background:var(--bg);border-radius:6px;border-left:3px solid ${color};font-size:12px">
+      <span>${icon}</span>
+      <span style="font-weight:600">${animal}</span>
+      <span style="color:${color}">${data.direction} ${data.long}L/${data.short}S</span>
+    </div>`;
+  }
+  animalHTML += '</div>';
+  animalEl.innerHTML = animalHTML;
 
   // Forecast
   const f = s.fish.forecast;
