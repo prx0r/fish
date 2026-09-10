@@ -1962,3 +1962,62 @@ def backtest_metrics(ticker: str = Query("MPAL")) -> dict[str, Any]:
         "win_rate": round(win_rate, 1),
         "avg_monthly_return": round(avg_return * 100, 2),
     }
+
+
+# ── A39: Real-time prices ────────────────────────────────────────────────────
+
+@app.get("/api/prices/realtime")
+async def realtime_prices() -> list[dict[str, Any]]:
+    """Get current prices for all portfolio positions."""
+    from fish.services.backtest_game import fetch_real_prices, HISTORICAL_PRICES
+    
+    prices = []
+    with SessionLocal() as session:
+        stocks = session.scalars(select(Watchlist)).all()
+        for stock in stocks:
+            try:
+                real = await fetch_real_prices(stock.ticker)
+                if real:
+                    current = real[-1]["price"]
+                    prev = real[-2]["price"] if len(real) > 1 else current
+                    change = (current - prev) / prev * 100 if prev else 0
+                    prices.append({
+                        "ticker": stock.ticker,
+                        "price": round(current, 2),
+                        "change": round(change, 2),
+                        "date": real[-1]["date"],
+                    })
+            except:
+                pass
+    
+    return prices
+
+
+# ── A44: Earnings dates ─────────────────────────────────────────────────────
+
+EARNINGS_DATES = {
+    "MPAL": {"next": "2026-11-15", "type": "Half-year results"},
+    "COHR": {"next": "2026-11-05", "type": "Q1 FY2027"},
+    "TSLA": {"next": "2026-10-22", "type": "Q3 2026"},
+    "NBIS": {"next": "2026-11-12", "type": "Q3 2026"},
+    "META": {"next": "2026-10-29", "type": "Q3 2026"},
+    "ACCO": {"next": "2026-11-04", "type": "Q3 FY2027"},
+    "COLL": {"next": "2026-11-12", "type": "Q3 2026"},
+    "DHX": {"next": "2026-11-06", "type": "Q2 FY2027"},
+    "IRWD": {"next": "2026-11-07", "type": "Q3 2026"},
+    "PBI": {"next": "2026-11-04", "type": "Q2 FY2027"},
+    "PGEN": {"next": "2026-11-12", "type": "Q3 2026"},
+    "BT.A": {"next": "2026-11-01", "type": "Q2 FY2027"},
+    "IAG": {"next": "2026-11-07", "type": "Q3 2026"},
+    "TSCO": {"next": "2026-10-14", "type": "H1 FY2027"},
+    "JDW": {"next": "2026-11-20", "type": "AGM"},
+}
+
+
+@app.get("/api/earnings")
+def earnings_calendar() -> list[dict[str, Any]]:
+    """Earnings calendar for portfolio positions."""
+    return [
+        {"ticker": k, "next": v["next"], "type": v["type"]}
+        for k, v in sorted(EARNINGS_DATES.items(), key=lambda x: x[1]["next"])
+    ]
