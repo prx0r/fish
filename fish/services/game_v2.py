@@ -68,51 +68,50 @@ def get_future_bars(ticker: str, after: str, limit: int = 63) -> list[dict]:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def _compute_ensemble_forecast(bars: list[dict]) -> dict:
-    """Run ensemble strategies on bars up to time T, return forecast."""
-    if len(bars) < 60:
-        return {'direction': 'FLAT', 'confidence': 0.5, 'votes_long': 0, 'votes_short': 0, 'total': 0}
+    """Run full Fish pipeline: regime → filtered ensemble → sequence sizing."""
+    from fish.services.fish_signal import compute_fish_signal
 
-    # Import strategies
-    from fish.services.baselines import BASELINE_STRATEGIES
-    from fish.services.fox import FOX_STRATEGIES
-    from fish.services.shark import SHARK_STRATEGIES
-    from fish.services.hedgehog import HEDGEHOG_STRATEGIES
-    from fish.services.wolf import WOLF_STRATEGIES
-    all_strats = {**BASELINE_STRATEGIES, **FOX_STRATEGIES, **SHARK_STRATEGIES, **HEDGEHOG_STRATEGIES, **WOLF_STRATEGIES}
+    signal = compute_fish_signal(bars)
 
-    # Adapt bar format for strategies
-    prices_fmt = [{'date': b['date'], 'price': b['close'], 'close': b['close'],
-                   'open': b['open'], 'high': b['high'], 'low': b['low'],
-                   'volume': b.get('volume', 1_000_000)} for b in bars]
+    # Build return dict compatible with existing game code
+    return {
+        'direction': signal.direction,
+        'confidence': signal.ensemble_confidence,
+        'consensus': signal.active_consensus,
+        'votes_long': signal.animal_summary.get('Bull', {}).get('long', 0) +
+                      signal.animal_summary.get('Turtle', {}).get('long', 0),
+        'votes_short': signal.animal_summary.get('Bull', {}).get('short', 0) +
+                       signal.animal_summary.get('Bear', {}).get('short', 0),
+        'total': sum(a.get('total', 0) for a in signal.animal_summary.values()),
+        'strategy_votes': {},  # Deprecated — use animal_summary instead
+        'animal_summary': signal.animal_summary,
+        'forecast': signal.forecast,
+        'vol_20d': signal.vol_20d,
+        'returns': signal.returns,
+        # New Fish-specific fields
+        'regime': {
+            'combined': signal.regime.combined,
+            'ma': signal.regime.ma_regime,
+            'vol': signal.regime.vol_regime,
+            'trend': signal.regime.trend_regime,
+            'confidence': signal.regime.confidence,
+            'active_animals': signal.regime.active_animals,
+            'inactive_animals': signal.regime.inactive_animals,
+        },
+        'sizing': {
+            'target_weight': signal.sizing.target_weight,
+            'confidence': signal.sizing.confidence,
+            'expected_return_20d': signal.sizing.expected_return_20d,
+            'quantile_10': signal.sizing.quantile_10,
+            'quantile_90': signal.sizing.quantile_90,
+            'rationale': signal.sizing.sizing_rationale,
+        },
+    }
 
-    long_count = short_count = total = 0
-    strategy_votes = {}
-    for name, fn in all_strats.items():
-        try:
-            r = fn(prices=prices_fmt)
-            if r and r.trades:
-                last = r.trades[-1].get('action', '')
-                if last == 'BUY':
-                    long_count += 1; total += 1
-                    strategy_votes[name] = 'LONG'
-                elif last == 'SELL':
-                    short_count += 1; total += 1
-                    strategy_votes[name] = 'SHORT'
-                else:
-                    strategy_votes[name] = 'FLAT'
-        except Exception:
-            pass
 
-    consensus = long_count / total if total > 0 else 0.5
-    direction = 'LONG' if consensus > 0.6 else ('SHORT' if consensus < 0.4 else 'FLAT')
-    confidence = abs(consensus - 0.5) * 2  # 0 at 50%, 1 at 0% or 100%
-
-    # Aggregate by animal
-    ANIMAL_MAP = {}
-    for n in BASELINE_STRATEGIES:
-        from fish.services.baselines import STRATEGY_META as _SM
-        ANIMAL_MAP[n] = _SM.get(n, {}).get('animal', 'Unknown')
-    for n in FOX_STRATEGIES: ANIMAL_MAP[n] = 'Fox'
+# ═══════════════════════════════════════════════════════════════════════════════
+# Game Engine
+# ═══════════════════════════════════════════════════════════════════════════════
     for n in SHARK_STRATEGIES: ANIMAL_MAP[n] = 'Shark'
     for n in HEDGEHOG_STRATEGIES: ANIMAL_MAP[n] = 'Hedgehog'
     for n in WOLF_STRATEGIES: ANIMAL_MAP[n] = 'Wolf'
@@ -201,6 +200,9 @@ class GameForecast:
     data_hash: str  # Hash of input bars for reproducibility
     animal_summary: dict = field(default_factory=dict)
     strategy_votes: dict = field(default_factory=dict)
+    sizing: dict = field(default_factory=dict)
+    failures: int = 0
+    failure_names: list = field(default_factory=list)
 
 
 @dataclass
@@ -258,12 +260,23 @@ GAMES: dict[str, GameEpisode] = {}
 
 
 def create_episode(
-    ticker: str,
+    ticker: str | None = None,
     mode: str = 'blind',
     episode_days: int = 126,  # ~6 months
     seed: int | None = None,
 ) -> GameEpisode:
-    """Create a new game episode with randomized start."""
+    """Create a new game episode with randomized start.
+
+    In blind mode, server picks ticker randomly if not specified.
+    """
+    eligible = [t for t, bars in ALL_PRICES.items() if len(bars) >= episode_days + 252]
+
+    if mode == 'blind' and ticker is None:
+        rng = random.Random(seed)
+        ticker = rng.choice(eligible)
+    elif ticker is None:
+        ticker = eligible[0] if eligible else 'TSLA'
+
     prices = ALL_PRICES.get(ticker, [])
     if len(prices) < episode_days + 252:
         raise ValueError(f"Not enough data for {ticker}: need {episode_days + 252} bars, have {len(prices)}")
@@ -307,6 +320,9 @@ def create_episode(
             data_hash=bars_hash,
             animal_summary=forecast_data.get('animal_summary', {}),
             strategy_votes=forecast_data.get('strategy_votes', {}),
+            sizing=forecast_data.get('sizing', {}),
+            failures=forecast_data.get('failures', 0),
+            failure_names=forecast_data.get('failure_names', []),
         )
 
         step = GameStep(
@@ -365,6 +381,7 @@ def get_episode_state(episode_id: str) -> dict | None:
             'recent_returns': f.returns,
             'animal_summary': f.animal_summary,
             'strategy_votes': f.strategy_votes,
+            'sizing': f.sizing,
         },
         'player_decision': None,  # Not yet made
         'outcome': None,  # Not yet revealed
@@ -419,14 +436,26 @@ def advance_episode(episode_id: str) -> dict | None:
     step.price_next = next_bar['close']
     step.return_next = (next_bar['close'] - step.price) / step.price
 
-    # Score Fish: Fish is always "long" in its own direction
-    fish_weight = 1.0 if step.fish_forecast.direction == 'LONG' else (-1.0 if step.fish_forecast.direction == 'SHORT' else 0.0)
-    step.fish_pnl = fish_weight * step.return_next
+    # Transaction costs (10 bps each way)
+    COST_BPS = 10
 
-    # Score Player
-    step.player_pnl = step.player_decision.target_weight * step.return_next
+    # Score Fish: use target_weight from Sequence sizing (long-only [0,1])
+    fish_target = step.fish_forecast.sizing.get('target_weight', 0.0) if hasattr(step.fish_forecast, 'sizing') else 0.0
+    # Fallback: if sizing not available, derive from direction + confidence
+    if fish_target == 0.0 and step.fish_forecast.direction != 'FLAT':
+        fish_target = step.fish_forecast.confidence  # Scale by confidence
+    # Cost: turnover × cost_bps
+    fish_turnover = abs(fish_target - (ep.steps[ep.current_step - 1].fish_forecast.sizing.get('target_weight', 0.0) if ep.current_step > 0 else 0))
+    fish_cost = fish_turnover * (COST_BPS / 10000)
+    step.fish_pnl = fish_target * step.return_next - fish_cost
 
-    # Buy-and-hold benchmark
+    # Score Player (long-only [0,1])
+    prev_weight = ep.steps[ep.current_step - 1].player_decision.target_weight if ep.current_step > 0 and ep.steps[ep.current_step - 1].player_decision else 0
+    player_turnover = abs(step.player_decision.target_weight - prev_weight)
+    player_cost = player_turnover * (COST_BPS / 10000)
+    step.player_pnl = step.player_decision.target_weight * step.return_next - player_cost
+
+    # Buy-and-hold benchmark (always 100% long, no turnover after day 1)
     step.bh_pnl = step.return_next
 
     # Brier score for probability estimate

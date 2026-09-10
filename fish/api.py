@@ -2734,22 +2734,27 @@ def game_tickers() -> list[dict[str, Any]]:
 
 @app.post("/api/game/start")
 def game_start(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
-    """Start a new game episode."""
+    """Start a new game episode. In blind mode, server picks ticker."""
     from fish.services.game_v2 import create_episode
-    ticker = payload.get('ticker', 'TSLA').upper()
+    ticker = payload.get('ticker')
+    if ticker:
+        ticker = ticker.upper()
     mode = payload.get('mode', 'blind')
     days = payload.get('days', 126)
     seed = payload.get('seed')
     try:
         ep = create_episode(ticker, mode=mode, episode_days=days, seed=seed)
-        return {
+        result = {
             'episode_id': ep.id,
-            'ticker': ep.ticker,
             'mode': ep.mode,
-            'start_date': ep.start_date,
-            'end_date': ep.end_date,
             'total_steps': len(ep.steps),
         }
+        # Only reveal ticker/date in non-blind modes
+        if mode != 'blind':
+            result['ticker'] = ep.ticker
+            result['start_date'] = ep.start_date
+            result['end_date'] = ep.end_date
+        return result
     except ValueError as e:
         raise HTTPException(400, str(e))
 

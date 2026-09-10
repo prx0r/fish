@@ -100,9 +100,10 @@
           </div>
         </div>
         <div style="display:flex;gap:12px;justify-content:center;align-items:end;flex-wrap:wrap">
-          <div>
+          <div id="tickerWrap">
             <label style="font-size:10px;color:var(--muted)">TICKER</label>
             <select id="tickerSelect" style="padding:8px;background:var(--panel);border:1px solid var(--line);border-radius:6px;color:var(--text);width:120px">
+              <option value="">Random</option>
               <option value="TSLA">TSLA</option>
               <option value="COHR">COHR</option>
               <option value="NBIS">NBIS</option>
@@ -261,6 +262,8 @@ function selectMode(mode) {
   gameMode = mode;
   document.querySelectorAll('.mode-card').forEach(c => c.classList.remove('selected'));
   document.getElementById('mode-' + mode).classList.add('selected');
+  // Hide ticker selector in blind mode — server picks
+  document.getElementById('tickerWrap').style.display = mode === 'blind' ? 'none' : 'block';
 }
 
 function initChart() {
@@ -277,12 +280,15 @@ function initChart() {
 }
 
 async function startGame() {
-  const ticker = document.getElementById('tickerSelect').value;
+  const tickerVal = document.getElementById('tickerSelect').value;
   const steps = parseInt(document.getElementById('stepsSelect').value);
+
+  const body = { mode: gameMode, days: steps };
+  if (gameMode !== 'blind' && tickerVal) body.ticker = tickerVal;
 
   const r = await api('/api/game/start', {
     method: 'POST',
-    body: JSON.stringify({ ticker, mode: gameMode, days: steps }),
+    body: JSON.stringify(body),
   });
   if (r.detail) { alert(r.detail); return; }
 
