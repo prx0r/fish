@@ -1,32 +1,54 @@
-# Fish Autonomous Loop
+# Fish Autonomous Loop — Updated
 
 **Status**: Running
-**Last update**: 2026-09-10 10:00
+**Last update**: 2026-09-10 10:30
 
 ---
 
-## Current A-Task Queue
+## Completed A-Tasks
 
-| # | Task | Status | Output |
-|---|------|--------|--------|
-| A11 | Add news headlines per stock to daily brief | ⬜ | |
-| A12 | Build proper chart (SVG, not ASCII) | ⬜ | |
-| A13 | Add technical indicators (RSI, MA) to positions | ⬜ | |
-| A14 | Add sector allocation breakdown | ⬜ | |
-| A15 | Build custom report generator | ⬜ | |
-| A16 | Add portfolio drift alerts | ⬜ | |
-| A17 | Add macro indicator tracking (rates, VIX, GBP/USD) | ⬜ | |
-| A18 | Build stock research pages | ⬜ | |
-| A19 | Add AI trade suggestion history | ⬜ | |
-| A20 | Build comparison charts (Chris vs Cathy vs AI) | ⬜ | |
+| # | Task | Status |
+|---|------|--------|
+| A1-A10 | Core features (UI, portfolio, brief, chat, trading, backtest, social) | ✅ |
+| A11 | Enhanced brief with technical indicators | ✅ |
+| A12 | Stock research endpoint | ✅ |
+| A13 | Sector allocation breakdown | ✅ |
+| A14 | Win rate / concentration metrics | ✅ |
+| A15 | Risk assessment in brief | ✅ |
+| A16 | Portfolio drift alerts | ✅ |
+| A17 | Macro indicators (GBP/USD, VIX, yields) | ✅ |
+| A18 | Stock research pages | ✅ |
+| A19 | AI trade history | ✅ |
+| A20 | Comparison charts | ⬜ Next |
 
 ---
 
-## Bottleneck Queue (H/M Tasks)
+## Current Bottlenecks
 
-| # | Task | Type | Demo |
-|---|------|------|------|
-| H1 | Cathy Prior's portfolio screenshots | 👤 | "Send screenshots, I'll parse and confirm" |
-| H2 | AI trading parameters | 👤 | "Default: 5% max, -10% stop, 2:1 R:R" |
-| M1 | GetXAPI credits ($0.50) | 💰 | 90 accounts × 50 tweets |
-| M2 | Real-time price API ($10/mo) | 💰 | Live prices |
+### 👤 H-Tasks (Need Human)
+| # | Task | Why |
+|---|------|-----|
+| H1 | Cathy Prior's portfolio screenshots | Can't add her positions without data |
+| H2 | AI trading parameters | Need risk tolerance, max position size |
+
+### 💰 M-Tasks (Cost Money)
+| # | Task | Cost |
+|---|------|------|
+| M1 | GetXAPI credits for 90 more accounts | ~$0.50 |
+| M2 | Real-time price API | ~$10/month |
+
+---
+
+## What's Working
+
+- ✅ Fish.egoic.ai deployed
+- ✅ 19 positions loaded
+- ✅ Daily brief (enhanced with technicals)
+- ✅ AI chat with graph context
+- ✅ Paper trading (suggest + decide)
+- ✅ Backtest game (£264k → £528k, +99.36%)
+- ✅ Social features (Chris + Cathy)
+- ✅ Performance comparison
+- ✅ Macro indicators
+- ✅ Portfolio alerts
+- ✅ Stock research pages
