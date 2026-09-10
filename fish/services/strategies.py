@@ -88,8 +88,9 @@ def strategy_mean_reversion(prices: list[dict]) -> StrategyResult:
             trades.append({"date": prices[i]["date"], "action": "SELL", "price": closes[i], "qty": position, "pnl": pnl})
             position = 0
     
-    final = closes[-1]
-    total_return = (final - closes[0]) / closes[0]
+    # Calculate actual trading return from trades
+    total_pnl = sum(t.get("pnl", 0) for t in trades)
+    total_return = total_pnl / (closes[0] * 1000) if closes[0] > 0 else 0  # Normalize by initial investment
     returns = calculate_returns(prices)
     wins = sum(1 for t in trades if t.get("pnl", 0) > 0)
     
@@ -125,8 +126,9 @@ def strategy_momentum(prices: list[dict]) -> StrategyResult:
             trades.append({"date": prices[i]["date"], "action": "SELL", "price": closes[i], "qty": position, "pnl": pnl})
             position = 0
     
-    final = closes[-1]
-    total_return = (final - closes[0]) / closes[0]
+    # Calculate actual trading return from trades
+    total_pnl = sum(t.get("pnl", 0) for t in trades)
+    total_return = total_pnl / (closes[0] * 1000) if closes[0] > 0 else 0
     returns = calculate_returns(prices)
     wins = sum(1 for t in trades if t.get("pnl", 0) > 0)
     
