@@ -1568,10 +1568,13 @@ def trading_suggestions(user_id: str = Query("chris")) -> list[dict[str, Any]]:
 
 @app.post("/api/trading/suggest")
 async def trading_suggest(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
-    """AI generates a trade suggestion."""
+    """AI generates a trade suggestion with confidence-based sizing."""
     from fish.services.portfolio_advisor import chat_with_agent
+    from fish.services.signals import generate_signal, confidence_to_label
+    
     ticker = payload.get("ticker", "").upper()
     user_id = payload.get("user_id", "chris")
+    capital = payload.get("capital", 10000)
     if not ticker:
         raise HTTPException(400, "ticker required")
 
@@ -1588,10 +1591,10 @@ async def trading_suggest(payload: dict[str, Any] = Body(...)) -> dict[str, Any]
             "pct": json.loads(w.notes or "{}").get("pct", 0),
         } for w in portfolio]
         
-        prompt = f"Analyze {ticker} and give me a specific trade suggestion: BUY or SELL, quantity, price, reasoning, confidence, stop loss, target. Format as JSON."
+        prompt = f"Analyze {ticker}. Give me a trade suggestion with: action (BUY/SELL/HOLD), confidence (0-1), reasoning, entry price, stop loss, target."
         response = await chat_with_agent(prompt, portfolio_data, [], user_id)
         
-        # Parse response into suggestion
+        # Parse response
         try:
             json_start = response.find("{")
             json_end = response.rfind("}") + 1
@@ -1602,7 +1605,7 @@ async def trading_suggest(payload: dict[str, Any] = Body(...)) -> dict[str, Any]
         except:
             trade_data = {"action": "HOLD", "reasoning": response, "confidence": 0.5}
         
-        # Parse confidence to float
+        # Parse confidence
         conf = trade_data.get("confidence", 0.5)
         if isinstance(conf, str):
             import re
@@ -1615,21 +1618,40 @@ async def trading_suggest(payload: dict[str, Any] = Body(...)) -> dict[str, Any]
         else:
             conf = float(conf)
         
-        suggestion = AiSuggestion(
-            user_id=user_id, ticker=ticker,
-            action=str(trade_data.get("action", "HOLD")),
-            qty=float(trade_data.get("qty", 0) or 0),
-            price=float(trade_data.get("price", 0) or 0),
-            reasoning=str(trade_data.get("reasoning", response)),
+        # Generate signal with confidence-based sizing
+        signal = generate_signal(
+            ticker=ticker,
+            action=trade_data.get("action", "HOLD"),
             confidence=conf,
+            reasoning=trade_data.get("reasoning", response),
+            entry=trade_data.get("price"),
+            stop_loss=trade_data.get("stop_loss"),
+            take_profit=trade_data.get("target"),
+            allocated_capital=capital,
         )
-        session.add(suggestion)
+        
+        # Save suggestion
+        session.add(AiSuggestion(
+            user_id=user_id, ticker=ticker,
+            action=signal.direction.value,
+            qty=signal.position_pct,
+            price=signal.entry or 0,
+            reasoning=signal.reasoning,
+            confidence=signal.confidence,
+        ))
         session.commit()
         
         return {
-            "id": suggestion.id, "ticker": ticker,
-            "action": suggestion.action, "reasoning": suggestion.reasoning,
-            "confidence": suggestion.confidence, "status": "pending",
+            "ticker": ticker,
+            "action": signal.direction.value,
+            "confidence": signal.confidence,
+            "confidence_label": confidence_to_label(signal.confidence),
+            "position_pct": round(signal.position_pct / capital * 100, 1),
+            "position_value": round(signal.position_pct),
+            "reasoning": signal.reasoning,
+            "entry": signal.entry,
+            "stop_loss": signal.stop_loss,
+            "take_profit": signal.take_profit,
         }
 
 
