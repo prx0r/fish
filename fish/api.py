@@ -2211,3 +2211,59 @@ def rebalance_suggestions(user_id: str = Query("chris")) -> dict[str, Any]:
             "suggestions": suggestions,
             "drift_threshold": 5.0,
         }
+
+
+# ── Strategy Backtest with Monte Carlo ──────────────────────────────────────
+
+@app.get("/api/strategies")
+def strategy_library() -> list[dict[str, Any]]:
+    """Strategy library with avatars and metadata."""
+    from fish.services.strategies import STRATEGY_INFO
+    return [
+        {"id": k, "name": v["name"], "avatar": v["avatar"], "based_on": v["based_on"], "best_for": v["best_for"]}
+        for k, v in STRATEGY_INFO.items()
+    ]
+
+
+@app.post("/api/backtest/all_strategies")
+async def backtest_all_strategies(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    """Run all strategies on a ticker and compare results."""
+    from fish.services.strategies import STRATEGIES, STRATEGY_INFO
+    from fish.services.backtest_game import HISTORICAL_PRICES
+    
+    ticker = payload.get("ticker", "MPAL")
+    prices = HISTORICAL_PRICES.get(ticker, [])
+    if not prices:
+        raise HTTPException(404, "No price data")
+    
+    results = []
+    for strategy_id, strategy_fn in STRATEGIES.items():
+        try:
+            result = strategy_fn(prices)
+            info = STRATEGY_INFO[strategy_id]
+            results.append({
+                "id": strategy_id,
+                "avatar": info["avatar"],
+                "name": info["name"],
+                "based_on": info["based_on"],
+                "return": round(result.total_return * 100, 2),
+                "sharpe": round(result.sharpe, 2),
+                "max_drawdown": round(result.max_drawdown * 100, 2),
+                "win_rate": round(result.win_rate, 1),
+                "trades": result.trades_count,
+            })
+        except Exception as e:
+            results.append({"id": strategy_id, "error": str(e)})
+    
+    # Sort by Sharpe ratio
+    results.sort(key=lambda x: x.get("sharpe", -999), reverse=True)
+    
+    # Benchmark (buy and hold)
+    bh_return = (prices[-1]["price"] - prices[0]["price"]) / prices[0]["price"] * 100
+    
+    return {
+        "ticker": ticker,
+        "period": f"{prices[0]['date']} to {prices[-1]['date']}",
+        "benchmark": {"name": "Buy & Hold", "return": round(bh_return, 2)},
+        "strategies": results,
+    }
