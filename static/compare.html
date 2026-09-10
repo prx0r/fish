@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Fish — Compare</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <a class="brand" href="/"><span class="brand-mark" style="background:#00d4aa">F</span><span>Fish</span></a>
+      <div class="side-label">PAGES</div>
+      <nav class="feed-nav">
+        <a href="/"><span class="nav-icon">📊</span>Dashboard</a>
+        <a href="/backtest"><span class="nav-icon">🎮</span>Backtest</a>
+        <a href="/compare" class="active"><span class="nav-icon">👥</span>Compare</a>
+      </nav>
+      <div class="side-spacer"></div>
+    </aside>
+    <main>
+      <header class="topbar">
+        <div><div class="eyebrow">PORTFOLIO COMPARISON</div><h1>Chris vs Cathy vs AI</h1><p>Compare portfolio performance across users and the AI model.</p></div>
+      </header>
+      <div id="compareContent"></div>
+    </main>
+  </div>
+  <script>
+    const API = '';
+    async function api(p,o={}){const r=await fetch(API+p,{headers:{'Content-Type':'application/json'},...o});return r.json();}
+    async function load(){
+      const d = await api('/api/performance/compare?user_ids=chris,cathy');
+      const div = document.getElementById('compareContent');
+      let html = '<div class="hero-card"><h3 style="margin:0 0 12px">Portfolio Comparison</h3><table><thead><tr><th>User</th><th>Positions</th><th>Value</th><th>Gain</th><th>Return</th></tr></thead><tbody>';
+      for(const [uid, info] of Object.entries(d.comparison)){
+        html += `<tr><td><strong>${uid}</strong></td><td>${info.positions}</td><td>£${info.total_value.toLocaleString()}</td><td>£${info.total_gain.toLocaleString()}</td><td>${info.return_pct.toFixed(2)}%</td></tr>`;
+      }
+      html += '</tbody></table></div>';
+      html += '<div class="hero-card"><h3 style="margin:0 0 12px">AI Model Performance</h3><p style="color:var(--muted)">AI suggested trades would have returned based on backtest simulation.</p><div id="aiResults"></div></div>';
+      div.innerHTML = html;
+      
+      // Load backtest for AI comparison
+      const bt = await api('/api/backtest/simulate',{method:'POST',body:'{}'});
+      document.getElementById('aiResults').innerHTML = `<p>If AI had full control from Jan 2026: <strong class="positive">£${bt.initial_value.toLocaleString()} → £${bt.final_value.toLocaleString()} (${bt.total_return>=0?'+':''}${bt.total_return.toFixed(1)}%)</strong></p>`;
+    }
+    load();
+  </script>
+</body>
+</html>

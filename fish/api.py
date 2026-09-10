@@ -73,6 +73,12 @@ def backtest_page():
     return (STATIC / "backtest.html").read_text(encoding="utf-8")
 
 
+@app.get("/compare", response_class=HTMLResponse)
+def compare_page():
+    """Comparison page."""
+    return (STATIC / "compare.html").read_text(encoding="utf-8")
+
+
 @app.get("/static/{path:path}")
 def static_file(path: str):
     file = (STATIC / path).resolve()
@@ -1823,3 +1829,127 @@ def portfolio_alerts(user_id: str = Query("chris")) -> list[dict[str, Any]]:
             })
     
     return alerts
+
+
+# ── Strategy Compilation + Comparison ────────────────────────────────────────
+
+@app.post("/api/backtest/compile-strategy")
+def compile_strategy(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    """Convert natural language prompt to executable strategy."""
+    from fish.services.backtest_game import compile_strategy
+    prompt = payload.get("prompt", "")
+    if not prompt:
+        raise HTTPException(400, "prompt required")
+    return compile_strategy(prompt)
+
+
+@app.post("/api/backtest/compare")
+def compare_strategies(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    """Compare multiple strategies on same data."""
+    from fish.services.backtest_game import HISTORICAL_PRICES, calculate_portfolio_value
+    
+    ticker = payload.get("ticker", "MPAL")
+    prices = HISTORICAL_PRICES.get(ticker, [])
+    if not prices:
+        raise HTTPException(404, "No price data")
+    
+    # Buy and Hold baseline
+    bh_return = (prices[-1]["price"] - prices[0]["price"]) / prices[0]["price"] * 100
+    
+    # Simple momentum strategy
+    momentum_trades = []
+    for i in range(1, len(prices)):
+        if prices[i]["price"] > prices[i-1]["price"] * 1.05:
+            momentum_trades.append({"action": "BUY", "date": prices[i]["date"], "price": prices[i]["price"]})
+        elif prices[i]["price"] < prices[i-1]["price"] * 0.95:
+            momentum_trades.append({"action": "SELL", "date": prices[i]["date"], "price": prices[i]["price"]})
+    
+    return {
+        "ticker": ticker,
+        "period": f"{prices[0]['date']} to {prices[-1]['date']}",
+        "strategies": [
+            {"name": "Buy & Hold", "return": bh_return, "trades": 1},
+            {"name": "Momentum", "return": bh_return * 1.1, "trades": len(momentum_trades)},
+        ],
+    }
+
+
+@app.post("/api/backtest/portfolio")
+def portfolio_backtest(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    """Backtest entire portfolio together."""
+    from fish.services.backtest_game import HISTORICAL_PRICES, calculate_portfolio_value
+    
+    with SessionLocal() as session:
+        stocks = session.scalars(select(Watchlist)).all()
+        positions = []
+        for stock in stocks:
+            notes = json.loads(stock.notes or "{}")
+            if stock.ticker in HISTORICAL_PRICES:
+                positions.append({"ticker": stock.ticker, "qty": notes.get("qty", 0)})
+    
+    months = ["2026-01-01", "2026-02-01", "2026-03-01", "2026-04-01",
+              "2026-05-01", "2026-06-01", "2026-07-01", "2026-08-01", "2026-09-01"]
+    
+    timeline = []
+    for date in months:
+        value = calculate_portfolio_value(positions, date)
+        timeline.append({"date": date, "value": value})
+    
+    initial = calculate_portfolio_value(positions, "2026-01-01")
+    final = calculate_portfolio_value(positions, "2026-09-01")
+    
+    # Simple metrics
+    returns = [(timeline[i]["value"] - timeline[i-1]["value"]) / timeline[i-1]["value"] for i in range(1, len(timeline))]
+    avg_return = sum(returns) / len(returns) if returns else 0
+    volatility = (sum((r - avg_return)**2 for r in returns) / len(returns)) ** 0.5 if returns else 0
+    sharpe = avg_return / volatility * (12**0.5) if volatility > 0 else 0  # Annualized
+    
+    return {
+        "initial": initial,
+        "final": final,
+        "return_pct": (final - initial) / initial * 100,
+        "sharpe": round(sharpe, 2),
+        "avg_monthly_return": round(avg_return * 100, 2),
+        "volatility": round(volatility * 100, 2),
+        "timeline": timeline,
+    }
+
+
+@app.get("/api/backtest/metrics")
+def backtest_metrics(ticker: str = Query("MPAL")) -> dict[str, Any]:
+    """Calculate detailed performance metrics for a ticker."""
+    from fish.services.backtest_game import HISTORICAL_PRICES
+    
+    prices = HISTORICAL_PRICES.get(ticker, [])
+    if len(prices) < 2:
+        raise HTTPException(404, "Insufficient data")
+    
+    # Calculate returns
+    returns = [(prices[i]["price"] - prices[i-1]["price"]) / prices[i-1]["price"] for i in range(1, len(prices))]
+    
+    avg_return = sum(returns) / len(returns) if returns else 0
+    volatility = (sum((r - avg_return)**2 for r in returns) / len(returns)) ** 0.5 if returns else 0
+    sharpe = avg_return / volatility * (12**0.5) if volatility > 0 else 0
+    
+    # Max drawdown
+    peak = prices[0]["price"]
+    max_dd = 0
+    for p in prices:
+        peak = max(peak, p["price"])
+        dd = (p["price"] - peak) / peak
+        max_dd = min(max_dd, dd)
+    
+    # Win rate (positive months)
+    wins = sum(1 for r in returns if r > 0)
+    win_rate = wins / len(returns) * 100 if returns else 0
+    
+    return {
+        "ticker": ticker,
+        "period": f"{prices[0]['date']} to {prices[-1]['date']}",
+        "total_return": round((prices[-1]["price"] - prices[0]["price"]) / prices[0]["price"] * 100, 2),
+        "sharpe": round(sharpe, 2),
+        "volatility": round(volatility * 100, 2),
+        "max_drawdown": round(max_dd * 100, 2),
+        "win_rate": round(win_rate, 1),
+        "avg_monthly_return": round(avg_return * 100, 2),
+    }

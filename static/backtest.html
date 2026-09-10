@@ -214,3 +214,48 @@
   </script>
 </body>
 </html>
+
+<!-- Extended backtest functionality -->
+<script>
+// A22: Add support/resistance lines
+function addSupportResistance(candles) {
+  const lows = candles.map(c => c.low);
+  const highs = candles.map(c => c.high);
+  const support = Math.min(...lows);
+  const resistance = Math.max(...highs);
+  
+  candleSeries.createPriceLine({ price: support, color: '#00d4aa', lineWidth: 1, lineStyle: 2, title: 'Support' });
+  candleSeries.createPriceLine({ price: resistance, color: '#ff837a', lineWidth: 1, lineStyle: 2, title: 'Resistance' });
+}
+
+// A23: Multi-interval simulation
+async function runMultiInterval() {
+  const ticker = document.getElementById('tickerSelect').value;
+  const data = await api(`/api/backtest/prices/${ticker}`);
+  
+  // Run at each interval
+  const intervals = {'1M': 1, '1W': 4, '1D': 22};
+  const interval = document.getElementById('intervalSelect').value;
+  const steps = intervals[interval] || 1;
+  
+  let position = 0, entryPrice = 0, cash = 100000;
+  const trades = [];
+  
+  for (let i = 0; i < data.length; i += steps) {
+    const c = data[i];
+    // Simple AI strategy: buy on dips, sell on rallies
+    if (i > 0 && c.price < data[i-1].price * 0.95 && position === 0) {
+      position = Math.floor(cash / c.price);
+      entryPrice = c.price;
+      cash -= position * c.price;
+      trades.push({date: c.date, action: 'BUY', price: c.price, qty: position, source: 'ai'});
+    } else if (i > 0 && c.price > entryPrice * 1.15 && position > 0) {
+      cash += position * c.price;
+      trades.push({date: c.date, action: 'SELL', price: c.price, qty: position, pnl: (c.price - entryPrice) * position, source: 'ai'});
+      position = 0;
+    }
+  }
+  
+  return {trades, finalValue: cash + position * data[data.length-1].price};
+}
+</script>
