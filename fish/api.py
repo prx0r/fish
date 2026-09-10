@@ -73,6 +73,12 @@ def backtest_page():
     return (STATIC / "backtest.html").read_text(encoding="utf-8")
 
 
+@app.get("/portfolio", response_class=HTMLResponse)
+def portfolio_page():
+    """Fish signal portfolio page."""
+    return (STATIC / "portfolio.html").read_text(encoding="utf-8")
+
+
 @app.get("/compare", response_class=HTMLResponse)
 def compare_page():
     """Comparison page."""
@@ -2804,3 +2810,123 @@ def game_result(episode_id: str) -> dict[str, Any]:
     if not result:
         raise HTTPException(404, "Game not found or not completed")
     return result
+
+
+# ── Portfolio Intelligence — Chris Prior's Basket ────────────────────────────
+
+@app.get("/api/portfolio/fish-signal")
+def portfolio_fish_signal() -> dict[str, Any]:
+    """Fish signal for all of Chris Prior's positions."""
+    from fish.services.fish_signal import compute_fish_signal
+    from fish.services.game_v2 import ALL_PRICES
+
+    results = []
+    for ticker, prices_raw in ALL_PRICES.items():
+        if len(prices_raw) < 60:
+            continue
+
+        prices = [{'date': p['date'], 'close': p.get('close', p.get('price', 0)),
+                    'open': p.get('open', p.get('price', 0)),
+                    'high': p.get('high', p.get('price', 0)),
+                    'low': p.get('low', p.get('price', 0)),
+                    'volume': p.get('volume', 1_000_000)}
+                   for p in prices_raw]
+
+        sig = compute_fish_signal(prices)
+        s = sig.sizing
+        r = sig.regime
+
+        results.append({
+            'ticker': ticker,
+            'price': prices_raw[-1].get('close', prices_raw[-1].get('price', 0)),
+            'regime': {
+                'combined': r.combined,
+                'ma': r.ma_regime,
+                'vol': r.vol_regime,
+                'confidence': r.confidence,
+                'active_animals': r.active_animals,
+            },
+            'signal': {
+                'direction': sig.direction,
+                'target_weight': s.target_weight,
+                'confidence': s.confidence,
+                'expected_return_20d': s.expected_return_20d,
+                'quantile_10': s.quantile_10,
+                'quantile_90': s.quantile_90,
+                'rationale': s.sizing_rationale,
+            },
+            'animals': sig.animal_summary,
+            'forecast': sig.forecast,
+            'returns': sig.returns,
+            'vol_20d': sig.vol_20d,
+        })
+
+    # Sort by target_weight descending
+    results.sort(key=lambda x: x['signal']['target_weight'], reverse=True)
+
+    # Summary
+    total_long = sum(1 for r in results if r['signal']['direction'] == 'LONG')
+    total_short = sum(1 for r in results if r['signal']['direction'] == 'SHORT')
+    total_flat = sum(1 for r in results if r['signal']['direction'] == 'FLAT')
+    avg_confidence = sum(r['signal']['confidence'] for r in results) / len(results) if results else 0
+
+    return {
+        'positions': results,
+        'summary': {
+            'total': len(results),
+            'long': total_long,
+            'short': total_short,
+            'flat': total_flat,
+            'avg_confidence': round(avg_confidence, 3),
+        },
+    }
+
+
+@app.get("/api/portfolio/fish-signal/{ticker}")
+def portfolio_fish_signal_single(ticker: str) -> dict[str, Any]:
+    """Fish signal for a single ticker with full animal breakdown."""
+    from fish.services.fish_signal import compute_fish_signal
+    from fish.services.game_v2 import ALL_PRICES
+
+    ticker = ticker.upper()
+    prices_raw = ALL_PRICES.get(ticker, [])
+    if len(prices_raw) < 60:
+        raise HTTPException(404, f"Insufficient data for {ticker}")
+
+    prices = [{'date': p['date'], 'close': p.get('close', p.get('price', 0)),
+                'open': p.get('open', p.get('price', 0)),
+                'high': p.get('high', p.get('price', 0)),
+                'low': p.get('low', p.get('price', 0)),
+                'volume': p.get('volume', 1_000_000)}
+               for p in prices_raw]
+
+    sig = compute_fish_signal(prices)
+    s = sig.sizing
+    r = sig.regime
+
+    return {
+        'ticker': ticker,
+        'price': prices_raw[-1].get('close', prices_raw[-1].get('price', 0)),
+        'regime': {
+            'combined': r.combined,
+            'ma': r.ma_regime,
+            'vol': r.vol_regime,
+            'trend': r.trend_regime,
+            'confidence': r.confidence,
+            'active_animals': r.active_animals,
+            'inactive_animals': r.inactive_animals,
+        },
+        'signal': {
+            'direction': sig.direction,
+            'target_weight': s.target_weight,
+            'confidence': s.confidence,
+            'expected_return_20d': s.expected_return_20d,
+            'quantile_10': s.quantile_10,
+            'quantile_90': s.quantile_90,
+            'rationale': s.sizing_rationale,
+        },
+        'animals': sig.animal_summary,
+        'forecast': sig.forecast,
+        'returns': sig.returns,
+        'vol_20d': sig.vol_20d,
+    }

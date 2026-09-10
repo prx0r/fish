@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Fish — Portfolio Signals</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <style>
+    .signal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+    .signal-card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; cursor: pointer; transition: border-color 0.2s; }
+    .signal-card:hover { border-color: #00d4aa; }
+    .signal-card .ticker { font-size: 20px; font-weight: 700; }
+    .signal-card .price { font-size: 14px; color: var(--muted); }
+    .signal-card .regime-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-top: 6px; }
+    .regime-bull { background: #00d4aa22; color: #00d4aa; }
+    .regime-bear { background: #ff837a22; color: #ff837a; }
+    .regime-neutral { background: #8e96a622; color: #8e96a6; }
+    .weight-bar { height: 8px; background: var(--line); border-radius: 4px; margin: 10px 0 6px; overflow: hidden; }
+    .weight-fill { height: 100%; border-radius: 4px; transition: width 0.5s; }
+    .weight-label { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
+    .animal-row { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-top: 4px; }
+    .animal-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .animal-active { opacity: 1; }
+    .animal-inactive { opacity: 0.3; }
+    .dir-long { color: #00d4aa; }
+    .dir-short { color: #ff837a; }
+    .dir-flat { color: #8e96a6; }
+    .summary-bar { display: flex; gap: 16px; padding: 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; margin-bottom: 16px; }
+    .summary-item { text-align: center; }
+    .summary-item .val { font-size: 24px; font-weight: 700; }
+    .summary-item .lbl { font-size: 11px; color: var(--muted); }
+    .detail-panel { display: none; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px; margin-top: 16px; }
+    .detail-panel.active { display: block; }
+    .forecast-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin: 12px 0; }
+    .forecast-cell { text-align: center; padding: 8px; background: var(--bg); border-radius: 6px; }
+    .forecast-cell .lbl { font-size: 10px; color: var(--muted); }
+    .forecast-cell .val { font-size: 16px; font-weight: 700; margin-top: 2px; }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <a class="brand" href="/">
+        <span class="brand-mark" style="background:#00d4aa">F</span>
+        <span>Fish</span>
+      </a>
+      <div class="side-label">PAGES</div>
+      <nav class="feed-nav">
+        <a href="/"><span class="nav-icon">📊</span>Dashboard</a>
+        <a href="/portfolio" class="active"><span class="nav-icon">🐟</span>Fish Signals</a>
+        <a href="/backtest"><span class="nav-icon">🎮</span>Beat the AI</a>
+        <a href="/compare"><span class="nav-icon">👥</span>Compare</a>
+      </nav>
+      <div class="side-spacer"></div>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <div>
+          <div class="eyebrow">FISH SIGNAL PIPELINE</div>
+          <h1>Chris Prior's Portfolio</h1>
+          <p>Wolf regime → filtered ensemble → Sequence sizing. Updated in real-time.</p>
+        </div>
+      </header>
+
+      <div id="summaryBar" class="summary-bar"></div>
+      <div id="signalGrid" class="signal-grid"></div>
+      <div id="detailPanel" class="detail-panel"></div>
+    </main>
+  </div>
+
+<script>
+const API = '';
+async function api(path) {
+  const r = await fetch(API + path);
+  return r.json();
+}
+
+const ANIMAL_ICONS = {Turtle:'🐢',Bull:'🐂',Bear:'🐻',Fox:'🦊',Shark:'🦈',Hedgehog:'🦔',Wolf:'🐺'};
+const ANIMAL_COLORS = {LONG:'#00d4aa',SHORT:'#ff837a',FLAT:'#8e96a6'};
+const DIR_CLASS = {LONG:'dir-long',SHORT:'dir-short',FLAT:'dir-flat'};
+
+let allData = null;
+
+async function loadPortfolio() {
+  const data = await api('/api/portfolio/fish-signal');
+  allData = data;
+
+  // Summary
+  const s = data.summary;
+  document.getElementById('summaryBar').innerHTML = `
+    <div class="summary-item"><div class="val" style="color:#00d4aa">${s.long}</div><div class="lbl">LONG</div></div>
+    <div class="summary-item"><div class="val" style="color:#ff837a">${s.short}</div><div class="lbl">SHORT</div></div>
+    <div class="summary-item"><div class="val" style="color:#8e96a6">${s.flat}</div><div class="lbl">FLAT</div></div>
+    <div class="summary-item"><div class="val">${s.total}</div><div class="lbl">POSITIONS</div></div>
+    <div class="summary-item"><div class="val">${(s.avg_confidence * 100).toFixed(0)}%</div><div class="lbl">AVG CONF</div></div>
+  `;
+
+  // Cards
+  const grid = document.getElementById('signalGrid');
+  grid.innerHTML = data.positions.map((p, i) => {
+    const sig = p.signal;
+    const regime = p.regime;
+    const weightPct = (sig.target_weight * 100).toFixed(0);
+    const weightColor = sig.direction === 'LONG' ? '#00d4aa' : sig.direction === 'SHORT' ? '#ff837a' : '#8e96a6';
+    const regimeClass = regime.ma === 'bull' ? 'regime-bull' : regime.ma === 'bear' ? 'regime-bear' : 'regime-neutral';
+
+    // Animal breakdown
+    const animalHTML = Object.entries(p.animals).map(([animal, data]) => {
+      const icon = ANIMAL_ICONS[animal] || '❓';
+      const color = ANIMAL_COLORS[data.direction] || '#8e96a6';
+      const isActive = data.active;
+      return `<div class="animal-row ${isActive ? 'animal-active' : 'animal-inactive'}">
+        <div class="animal-dot" style="background:${color}"></div>
+        <span>${icon} ${animal}</span>
+        <span style="color:${color};margin-left:auto">${data.direction} ${data.long}L/${data.short}S</span>
+      </div>`;
+    }).join('');
+
+    return `
+      <div class="signal-card" onclick="showDetail(${i})">
+        <div style="display:flex;justify-content:space-between;align-items:start">
+          <div>
+            <div class="ticker">${p.ticker}</div>
+            <div class="price">$${p.price.toFixed(2)}</div>
+          </div>
+          <div class="${DIR_CLASS[sig.direction]}" style="font-size:14px;font-weight:700">${sig.direction}</div>
+        </div>
+        <div class="regime-badge ${regimeClass}">${regime.combined} (${(regime.confidence * 100).toFixed(0)}%)</div>
+        <div class="weight-bar">
+          <div class="weight-fill" style="width:${weightPct}%;background:${weightColor}"></div>
+        </div>
+        <div class="weight-label">
+          <span>Target: ${weightPct}%</span>
+          <span>Conf: ${(sig.confidence * 100).toFixed(0)}%</span>
+        </div>
+        ${animalHTML}
+      </div>
+    `;
+  }).join('');
+}
+
+function showDetail(idx) {
+  const p = allData.positions[idx];
+  const panel = document.getElementById('detailPanel');
+  const sig = p.signal;
+  const fc = p.forecast;
+
+  panel.innerHTML = `
+    <h2 style="margin:0 0 12px">${ANIMAL_ICONS[p.regime.ma === 'bull' ? '🐂' : '🐻'] || ''} ${p.ticker} — ${sig.direction}</h2>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+      <div>
+        <h3 style="margin:0 0 8px;font-size:12px;color:var(--muted)">REGIME</h3>
+        <div style="font-size:18px;font-weight:700">${p.regime.combined}</div>
+        <div style="font-size:12px;color:var(--muted)">MA: ${p.regime.ma} | Vol: ${p.regime.vol} | Trend: ${p.regime.trend}</div>
+        <div style="font-size:12px;color:var(--muted)">Regime confidence: ${(p.regime.confidence * 100).toFixed(0)}%</div>
+        <div style="margin-top:8px;font-size:12px">
+          <strong>Active:</strong> ${p.regime.active_animals.join(', ')}
+        </div>
+      </div>
+      <div>
+        <h3 style="margin:0 0 8px;font-size:12px;color:var(--muted)">SIZING</h3>
+        <div style="font-size:18px;font-weight:700">${(sig.target_weight * 100).toFixed(0)}% allocation</div>
+        <div style="font-size:12px;color:var(--muted)">${sig.rationale}</div>
+        <div style="margin-top:8px;font-size:12px">
+          Expected 20d: ${sig.expected_return_20d > 0 ? '+' : ''}${sig.expected_return_20d.toFixed(1)}%<br>
+          Q10: ${sig.quantile_10.toFixed(1)}% | Q90: ${sig.quantile_90.toFixed(1)}%
+        </div>
+      </div>
+      <div>
+        <h3 style="margin:0 0 8px;font-size:12px;color:var(--muted)">FORECAST</h3>
+        <div class="forecast-grid">
+          <div class="forecast-cell"><div class="lbl">20d P(up)</div><div class="val">${fc['20d'] ? (fc['20d'].p_up * 100).toFixed(0) + '%' : '-'}</div></div>
+          <div class="forecast-cell"><div class="lbl">20d expected</div><div class="val">${fc['20d'] ? fc['20d'].expected.toFixed(1) + '%' : '-'}</div></div>
+          <div class="forecast-cell"><div class="lbl">20d vol</div><div class="val">${p.vol_20d.toFixed(0)}%</div></div>
+        </div>
+        <div style="font-size:11px;color:var(--muted)">
+          Trailing: 1d ${p.returns['1d'] > 0 ? '+' : ''}${p.returns['1d'].toFixed(1)}% |
+          5d ${p.returns['5d'] > 0 ? '+' : ''}${p.returns['5d'].toFixed(1)}% |
+          20d ${p.returns['20d'] > 0 ? '+' : ''}${p.returns['20d'].toFixed(1)}%
+        </div>
+      </div>
+    </div>
+  `;
+  panel.classList.add('active');
+  panel.scrollIntoView({ behavior: 'smooth' });
+}
+
+loadPortfolio();
+</script>
+</body>
+</html>
