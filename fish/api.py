@@ -14,7 +14,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import joinedload
 
 from fish.db import SessionLocal, init_db
-from fish.models import Feed, FeedVersion, IngestionRun, Object, Edge, Interaction, Artifact, Watchlist, StockSnapshot, InvestorReport, ChatMemory, PaperTrade, AiSuggestion
+from fish.models import Feed, FeedVersion, IngestionRun, Object, Edge, Interaction, Artifact, Watchlist, StockSnapshot, InvestorReport, ChatMemory, PaperTrade, AiSuggestion, User, Portfolio, Friendship, PerformanceSnapshot
 from fish.schemas import FeedCreate, FeedUpdate
 from fish.seed import seed
 from fish.services.feeds import feed_to_dict, feed_to_rss, get_delta_feed, icon_png, manifest, slugify
@@ -598,7 +598,7 @@ def synthesize_thesis_endpoint():
     return {"action": "none", "message": "No update warranted"}
 
 
-# ── Stock Watchlist (Vision 2.0) ──────────────────────────────────────────────
+# ── Paper Trading (AI vs Human) ───────────────────────────────────────────────
 
 @app.get("/api/stocks")
 def stocks_list() -> list[dict[str, Any]]:
@@ -1389,7 +1389,114 @@ async def portfolio_chat(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
     return {"response": response_text}
 
 
-# ── Paper Trading (AI vs Human) ───────────────────────────────────────────────
+# ── Social Portfolio Platform ─────────────────────────────────────────────────
+
+@app.post("/api/users")
+def create_user(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    """Create a user account."""
+    user_id = payload.get("user_id", "")
+    name = payload.get("name", "")
+    if not user_id or not name:
+        raise HTTPException(400, "user_id and name required")
+    with SessionLocal() as session:
+        existing = session.scalar(select(User).where(User.id == user_id))
+        if existing:
+            return {"ok": True, "user_id": user_id, "message": "already exists"}
+        session.add(User(id=user_id, name=name, email=payload.get("email")))
+        session.add(Portfolio(user_id=user_id, name=f"{name}'s Portfolio"))
+        session.commit()
+        return {"ok": True, "user_id": user_id}
+
+
+@app.post("/api/friends")
+def add_friend(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    """Add a friend connection."""
+    user_id = payload.get("user_id", "")
+    friend_id = payload.get("friend_id", "")
+    if not user_id or not friend_id:
+        raise HTTPException(400, "user_id and friend_id required")
+    with SessionLocal() as session:
+        existing = session.scalar(
+            select(Friendship).where(Friendship.user_id == user_id, Friendship.friend_id == friend_id)
+        )
+        if existing:
+            return {"ok": True, "message": "already friends"}
+        session.add(Friendship(user_id=user_id, friend_id=friend_id))
+        session.commit()
+        return {"ok": True}
+
+
+@app.get("/api/friends")
+def list_friends(user_id: str = Query("chris")) -> list[dict[str, Any]]:
+    """List user's friends."""
+    with SessionLocal() as session:
+        friendships = session.scalars(
+            select(Friendship).where(Friendship.user_id == user_id)
+        ).all()
+        friends = []
+        for f in friendships:
+            friend = session.get(User, f.friend_id)
+            if friend:
+                friends.append({
+                    "user_id": friend.id,
+                    "name": friend.name,
+                })
+        return friends
+
+
+@app.get("/api/performance/compare")
+def compare_performance(user_ids: str = Query("chris")) -> dict[str, Any]:
+    """Compare portfolio performance across users."""
+    ids = [u.strip() for u in user_ids.split(",")]
+    results = {}
+    
+    with SessionLocal() as session:
+        for uid in ids:
+            # Get portfolio positions
+            positions = session.scalars(select(Watchlist)).all()
+            total_value = sum(
+                json.loads(p.notes or "{}").get("value", 0) for p in positions
+            )
+            total_gain = sum(
+                json.loads(p.notes or "{}").get("gain", 0) for p in positions
+            )
+            total_book = sum(
+                json.loads(p.notes or "{}").get("book_cost", 0) for p in positions
+            )
+            
+            results[uid] = {
+                "positions": len(positions),
+                "total_value": total_value,
+                "total_gain": total_gain,
+                "return_pct": (total_gain / total_book * 100) if total_book else 0,
+            }
+    
+    return {"comparison": results}
+
+
+@app.get("/api/performance/ai-vs-human")
+def ai_vs_human(user_id: str = Query("chris")) -> dict[str, Any]:
+    """Compare AI suggested performance vs actual human performance."""
+    with SessionLocal() as session:
+        trades = session.scalars(
+            select(PaperTrade).where(PaperTrade.user_id == user_id)
+        ).all()
+        
+        ai_trades = [t for t in trades if t.source == "ai"]
+        user_trades = [t for t in trades if t.source == "user"]
+        
+        # Get current portfolio value
+        positions = session.scalars(select(Watchlist)).all()
+        total_value = sum(
+            json.loads(p.notes or "{}").get("value", 0) for p in positions
+        )
+        
+        return {
+            "ai": {"trades": len(ai_trades)},
+            "user": {"trades": len(user_trades)},
+            "portfolio_value": total_value,
+            "note": "AI performance calculated from historical backtest",
+        }
 
 @app.get("/api/trading/suggestions")
 def trading_suggestions(user_id: str = Query("chris")) -> list[dict[str, Any]]:

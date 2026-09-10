@@ -284,3 +284,50 @@ class AiSuggestion(Base):
     confidence: Mapped[float] = mapped_column(Float, default=0.5)
     status: Mapped[str] = mapped_column(String(16), default="pending")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class User(Base):
+    """User account."""
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    name: Mapped[str] = mapped_column(String(120))
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Portfolio(Base):
+    """User's portfolio (one per user)."""
+    __tablename__ = "portfolios"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(120), default="My Portfolio")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Friendship(Base):
+    """Friend connections between users."""
+    __tablename__ = "friendships"
+    __table_args__ = (UniqueConstraint("user_id", "friend_id", name="uq_friendship"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(128), index=True)
+    friend_id: Mapped[str] = mapped_column(String(128), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class PerformanceSnapshot(Base):
+    """Daily performance snapshot for a portfolio."""
+    __tablename__ = "performance_snapshots"
+    __table_args__ = (UniqueConstraint("portfolio_id", "date", name="uq_portfolio_date"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    portfolio_id: Mapped[int] = mapped_column(Integer, index=True)
+    date: Mapped[str] = mapped_column(String(10))
+    total_value: Mapped[float] = mapped_column(Float)
+    cash: Mapped[float] = mapped_column(Float, default=0)
+    daily_return: Mapped[float] = mapped_column(Float, default=0)
+    cumulative_return: Mapped[float] = mapped_column(Float, default=0)
+    ai_suggested_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
