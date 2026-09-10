@@ -3,9 +3,56 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <title>Fish — Backtest</title>
+  <title>Fish — Beat the AI</title>
   <link rel="stylesheet" href="/static/styles.css">
   <script src="/static/lightweight-charts.js"></script>
+  <style>
+    .game-grid { display: grid; grid-template-columns: 1fr 340px; gap: 16px; }
+    @media (max-width: 900px) { .game-grid { grid-template-columns: 1fr; } }
+    .fish-card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+    .fish-card h3 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); }
+    .direction-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-weight: 700; font-size: 13px; }
+    .dir-long { background: #00d4aa22; color: #00d4aa; border: 1px solid #00d4aa44; }
+    .dir-short { background: #ff837a22; color: #ff837a; border: 1px solid #ff837a44; }
+    .dir-flat { background: #8e96a622; color: #8e96a6; border: 1px solid #8e96a644; }
+    .conf-bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin-top: 6px; }
+    .conf-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+    .vote-row { display: flex; gap: 8px; margin-top: 8px; }
+    .vote-chip { font-size: 11px; padding: 3px 8px; border-radius: 4px; background: var(--bg); }
+    .slider-wrap { margin: 16px 0; }
+    .slider-wrap input[type=range] { width: 100%; accent-color: #00d4aa; }
+    .slider-labels { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: 4px; }
+    .btn-lock { background: #00d4aa; color: #000; border: none; padding: 12px 24px; border-radius: 8px; font-weight: 700; font-size: 14px; cursor: pointer; width: 100%; margin-top: 12px; }
+    .btn-lock:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-lock.locked { background: #8e96a6; }
+    .btn-next { background: #5b6bf7; color: #fff; border: none; padding: 12px 24px; border-radius: 8px; font-weight: 700; font-size: 14px; cursor: pointer; width: 100%; margin-top: 8px; }
+    .btn-next:disabled { opacity: 0.4; cursor: not-allowed; }
+    .step-pips { display: flex; gap: 3px; margin: 12px 0; flex-wrap: wrap; }
+    .pip { width: 8px; height: 8px; border-radius: 50%; background: var(--line); }
+    .pip.done { background: #00d4aa; }
+    .pip.current { background: #5b6bf7; box-shadow: 0 0 6px #5b6bf7; }
+    .pip.win { background: #00d4aa; }
+    .pip.lose { background: #ff837a; }
+    .outcome-flash { padding: 12px; border-radius: 8px; margin-top: 12px; font-size: 14px; text-align: center; font-weight: 600; }
+    .outcome-win { background: #00d4aa15; border: 1px solid #00d4aa44; color: #00d4aa; }
+    .outcome-lose { background: #ff837a15; border: 1px solid #ff837a44; color: #ff837a; }
+    .forecast-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 8px; }
+    .forecast-cell { text-align: center; padding: 6px; background: var(--bg); border-radius: 6px; }
+    .forecast-cell .lbl { font-size: 10px; color: var(--muted); }
+    .forecast-cell .val { font-size: 16px; font-weight: 700; margin-top: 2px; }
+    .score-table { width: 100%; font-size: 12px; border-collapse: collapse; }
+    .score-table td { padding: 6px 8px; border-bottom: 1px solid var(--line); }
+    .score-table td:last-child { text-align: right; font-weight: 600; }
+    .setup-screen { text-align: center; padding: 60px 20px; }
+    .setup-screen h2 { font-size: 28px; margin-bottom: 8px; }
+    .setup-screen p { color: var(--muted); margin-bottom: 24px; }
+    .mode-cards { display: flex; gap: 12px; justify-content: center; margin-bottom: 24px; flex-wrap: wrap; }
+    .mode-card { padding: 16px 20px; border: 2px solid var(--line); border-radius: 10px; cursor: pointer; text-align: center; min-width: 140px; transition: border-color 0.2s; }
+    .mode-card:hover, .mode-card.selected { border-color: #00d4aa; }
+    .mode-card .mode-icon { font-size: 28px; margin-bottom: 6px; }
+    .mode-card .mode-name { font-weight: 700; font-size: 14px; }
+    .mode-card .mode-desc { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  </style>
 </head>
 <body>
   <div class="shell">
@@ -17,7 +64,7 @@
       <div class="side-label">PAGES</div>
       <nav class="feed-nav">
         <a href="/"><span class="nav-icon">📊</span>Dashboard</a>
-        <a href="/backtest" class="active"><span class="nav-icon">🎮</span>Backtest</a>
+        <a href="/backtest" class="active"><span class="nav-icon">🎮</span>Beat the AI</a>
       </nav>
       <div class="side-spacer"></div>
     </aside>
@@ -25,237 +72,397 @@
     <main>
       <header class="topbar">
         <div>
-          <div class="eyebrow">BACKTEST ENGINE</div>
-          <h1>AI vs Human</h1>
-          <p>Simulate portfolio decisions over time. Compare AI, Human, and Buy-and-Hold.</p>
+          <div class="eyebrow">TRAINING ENVIRONMENT</div>
+          <h1 id="pageTitle">Can You Beat Fish?</h1>
+          <p id="pageSubtitle">See Fish's forecast, choose your position. After 30 rounds, find your residual edge.</p>
         </div>
       </header>
 
-      <section>
-        <div class="hero-card">
-          <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:end">
-            <div>
-              <label style="font-size:10px;color:var(--muted)">TICKER</label>
-              <select id="tickerSelect" style="padding:8px;background:var(--panel);border:1px solid var(--line);border-radius:6px;color:var(--text);width:120px">
-                <option value="MPAL">MPAL</option>
-                <option value="COHR">COHR</option>
-                <option value="TSLA">TSLA ETP</option>
-                <option value="NBIS">NBIS</option>
-                <option value="META">META</option>
-              </select>
-            </div>
-            <div>
-              <label style="font-size:10px;color:var(--muted)">INTERVAL</label>
-              <select id="intervalSelect" style="padding:8px;background:var(--panel);border:1px solid var(--line);border-radius:6px;color:var(--text);width:100px">
-                <option value="1M">Monthly</option>
-                <option value="1W">Weekly</option>
-                <option value="1D">Daily</option>
-              </select>
-            </div>
-            <div>
-              <label style="font-size:10px;color:var(--muted)">STRATEGY</label>
-              <select id="strategySelect" style="padding:8px;background:var(--panel);border:1px solid var(--line);border-radius:6px;color:var(--text);width:140px">
-                <option value="buyhold">Buy & Hold</option>
-                <option value="ai">AI Trader</option>
-                <option value="custom">Custom Strategy</option>
-              </select>
-            </div>
-            <button class="btn" onclick="runSimulation()">Run Simulation</button>
+      <!-- SETUP SCREEN -->
+      <div id="setupScreen" class="setup-screen">
+        <h2>Choose Your Mode</h2>
+        <p>You'll see Fish's forecast for each step. Decide how much to allocate. Fish's call is locked before the next bar is revealed.</p>
+        <div class="mode-cards">
+          <div class="mode-card selected" onclick="selectMode('blind')" id="mode-blind">
+            <div class="mode-icon">🕶️</div>
+            <div class="mode-name">Blind</div>
+            <div class="mode-desc">No ticker or date. Pure trading judgment.</div>
+          </div>
+          <div class="mode-card" onclick="selectMode('context')" id="mode-context">
+            <div class="mode-icon">📰</div>
+            <div class="mode-name">Context</div>
+            <div class="mode-desc">See company name and date. Test information use.</div>
+          </div>
+          <div class="mode-card" onclick="selectMode('signal_only')" id="mode-signal">
+            <div class="mode-icon">📡</div>
+            <div class="mode-name">Signal Only</div>
+            <div class="mode-desc">Fish's forecast only. No chart. Test trust calibration.</div>
           </div>
         </div>
-
-        <div id="chartContainer" style="height:400px;border:1px solid var(--line);border-radius:8px;background:var(--panel);margin-bottom:12px"></div>
-
-        <div id="resultsSection" style="display:none">
-          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px">
-            <div class="metric-box"><div class="metric-val" id="resReturn">0%</div><div class="metric-lbl">Return</div></div>
-            <div class="metric-box"><div class="metric-val" id="resTrades">0</div><div class="metric-lbl">Trades</div></div>
-            <div class="metric-box"><div class="metric-val" id="resWinRate">0%</div><div class="metric-lbl">Win Rate</div></div>
-            <div class="metric-box"><div class="metric-val" id="resMaxDD">0%</div><div class="metric-lbl">Max Drawdown</div></div>
+        <div style="display:flex;gap:12px;justify-content:center;align-items:end;flex-wrap:wrap">
+          <div>
+            <label style="font-size:10px;color:var(--muted)">TICKER</label>
+            <select id="tickerSelect" style="padding:8px;background:var(--panel);border:1px solid var(--line);border-radius:6px;color:var(--text);width:120px">
+              <option value="TSLA">TSLA</option>
+              <option value="COHR">COHR</option>
+              <option value="NBIS">NBIS</option>
+              <option value="META">META</option>
+              <option value="ACCO">ACCO</option>
+              <option value="COLL">COLL</option>
+              <option value="DHX">DHX</option>
+              <option value="IRWD">IRWD</option>
+              <option value="PBI">PBI</option>
+              <option value="PGEN">PGEN</option>
+              <option value="BT.A">BT.A</option>
+              <option value="IAG">IAG</option>
+              <option value="TSCO">TSCO</option>
+              <option value="JDW">JDW</option>
+            </select>
           </div>
+          <div>
+            <label style="font-size:10px;color:var(--muted)">STEPS</label>
+            <select id="stepsSelect" style="padding:8px;background:var(--panel);border:1px solid var(--line);border-radius:6px;color:var(--text);width:80px">
+              <option value="20">20</option>
+              <option value="40">40</option>
+              <option value="60" selected>60</option>
+              <option value="126">126</option>
+            </select>
+          </div>
+          <button class="btn" onclick="startGame()" style="padding:10px 24px">Start Game</button>
+        </div>
+      </div>
 
-          <div class="hero-card">
-            <h3 style="margin:0 0 8px">Trade Log</h3>
-            <table id="tradeLog">
-              <thead><tr><th>Date</th><th>Action</th><th>Price</th><th>Qty</th><th>P&L</th><th>Source</th></tr></thead>
-              <tbody></tbody>
-            </table>
+      <!-- GAME SCREEN -->
+      <div id="gameScreen" style="display:none">
+        <div class="game-grid">
+          <div>
+            <div id="chartContainer" style="height:350px;border:1px solid var(--line);border-radius:8px;background:var(--panel);margin-bottom:12px"></div>
+            <div id="outcomeFlash" class="outcome-flash" style="display:none"></div>
+          </div>
+          <div>
+            <!-- Fish Forecast -->
+            <div class="fish-card" style="margin-bottom:12px">
+              <h3>🐟 Fish Says</h3>
+              <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+                <span id="fishDirection" class="direction-badge dir-flat">FLAT</span>
+                <span id="fishTicker" style="font-weight:700;font-size:18px">???</span>
+                <span id="fishDate" style="color:var(--muted);font-size:12px;margin-left:auto">Day 1/60</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:4px">
+                <span>Confidence</span>
+                <span id="fishConfText">0%</span>
+              </div>
+              <div class="conf-bar"><div id="fishConfBar" class="conf-fill" style="width:0%;background:#00d4aa"></div></div>
+              <div class="vote-row">
+                <span class="vote-chip" id="fishVotesLong">0L</span>
+                <span class="vote-chip" id="fishVotesShort">0S</span>
+                <span class="vote-chip" id="fishVotesTotal">0 total</span>
+              </div>
+              <div class="forecast-grid">
+                <div class="forecast-cell"><div class="lbl">1d P(up)</div><div class="val" id="fc1d">-</div></div>
+                <div class="forecast-cell"><div class="lbl">20d P(up)</div><div class="val" id="fc20d">-</div></div>
+                <div class="forecast-cell"><div class="lbl">20d vol</div><div class="val" id="fcVol">-</div></div>
+              </div>
+              <div style="font-size:11px;color:var(--muted);margin-top:8px">
+                <span id="fishExpRet20"></span>
+                <span id="fishQ10"></span>
+                <span id="fishQ90"></span>
+              </div>
+            </div>
+
+            <!-- Player Decision -->
+            <div class="fish-card">
+              <h3>🎯 Your Position</h3>
+              <div class="slider-wrap">
+                <input type="range" id="weightSlider" min="0" max="100" value="50" oninput="updateWeightLabel()">
+                <div class="slider-labels">
+                  <span>0% (Flat)</span>
+                  <span id="weightLabel" style="color:#00d4aa;font-weight:700">50%</span>
+                  <span>100% (Full)</span>
+                </div>
+              </div>
+              <button id="lockBtn" class="btn-lock" onclick="lockDecision()">Lock Decision</button>
+              <button id="nextBtn" class="btn-next" onclick="advanceStep()" disabled>Reveal Next Day →</button>
+            </div>
+
+            <!-- Step Pips -->
+            <div class="fish-card" style="margin-top:12px">
+              <h3>Progress</h3>
+              <div class="step-pips" id="stepPips"></div>
+              <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted)">
+                <span>Player: <strong id="playerReturn">0%</strong></span>
+                <span>Fish: <strong id="fishReturn">0%</strong></span>
+                <span>B&H: <strong id="bhReturn">0%</strong></span>
+              </div>
+            </div>
           </div>
         </div>
-      </section>
+      </div>
+
+      <!-- RESULTS SCREEN -->
+      <div id="resultsScreen" style="display:none">
+        <div style="text-align:center;margin-bottom:24px">
+          <h2 id="resultTitle">Game Over</h2>
+          <p id="resultSubtitle" style="color:var(--muted)"></p>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px">
+          <div class="fish-card" style="text-align:center">
+            <div style="font-size:11px;color:var(--muted)">YOU</div>
+            <div id="finalPlayer" style="font-size:28px;font-weight:700;color:#00d4aa">0%</div>
+          </div>
+          <div class="fish-card" style="text-align:center">
+            <div style="font-size:11px;color:var(--muted)">FISH</div>
+            <div id="finalFish" style="font-size:28px;font-weight:700;color:#5b6bf7">0%</div>
+          </div>
+          <div class="fish-card" style="text-align:center">
+            <div style="font-size:11px;color:var(--muted)">BUY & HOLD</div>
+            <div id="finalBH" style="font-size:28px;font-weight:700;color:#8e96a6">0%</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">
+          <div class="fish-card">
+            <h3>Residual Edge</h3>
+            <div id="residualEdge" style="font-size:32px;font-weight:700">0%</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:4px">Your return minus Fish's return</div>
+          </div>
+          <div class="fish-card">
+            <h3>Calibration (Brier)</h3>
+            <div id="brierScore" style="font-size:32px;font-weight:700">-</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:4px">How well-calibrated were your probability estimates</div>
+          </div>
+        </div>
+        <div class="fish-card">
+          <h3>Calibration by Confidence</h3>
+          <table class="score-table" id="calibrationTable">
+            <thead><tr><th>Confidence Range</th><th>Hit Rate</th><th>Count</th><th>Gap</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div style="text-align:center;margin-top:20px">
+          <button class="btn" onclick="resetGame()" style="padding:12px 32px">Play Again</button>
+        </div>
+      </div>
     </main>
   </div>
 
-  <script>
-    const API = '';
-    async function api(path, opts={}) {
-      const r = await fetch(API+path, {headers:{'Content-Type':'application/json'},...opts});
-      return r.json();
-    }
+<script>
+const API = '';
+async function api(path, opts={}) {
+  const r = await fetch(API+path, {headers:{'Content-Type':'application/json'},...opts});
+  return r.json();
+}
 
-    let chart = null;
-    let candleSeries = null;
-    let volumeSeries = null;
-    let markers = [];
+let chart = null, lineSeries = null;
+let gameId = null, gameMode = 'blind', currentStep = 0, totalSteps = 0;
+let locked = false, lastState = null;
 
-    // Initialize chart
-    function initChart() {
-      const container = document.getElementById('chartContainer');
-      chart = LightweightCharts.createChart(container, {
-        width: container.clientWidth,
-        height: 400,
-        layout: { background: { color: '#111319' }, textColor: '#8e96a6' },
-        grid: { vertLines: { color: '#252a33' }, horzLines: { color: '#252a33' } },
-        crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
-        timeScale: { borderColor: '#252a33', timeVisible: true },
-      });
+function selectMode(mode) {
+  gameMode = mode;
+  document.querySelectorAll('.mode-card').forEach(c => c.classList.remove('selected'));
+  document.getElementById('mode-' + mode).classList.add('selected');
+}
 
-      candleSeries = chart.addCandlestickSeries({
-        upColor: '#00d4aa', downColor: '#ff837a',
-        borderUpColor: '#00d4aa', borderDownColor: '#ff837a',
-        wickUpColor: '#00d4aa', wickDownColor: '#ff837a',
-      });
+function initChart() {
+  const c = document.getElementById('chartContainer');
+  chart = LightweightCharts.createChart(c, {
+    width: c.clientWidth, height: 350,
+    layout: { background: { color: '#111319' }, textColor: '#8e96a6' },
+    grid: { vertLines: { color: '#252a33' }, horzLines: { color: '#252a33' } },
+    crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+    timeScale: { borderColor: '#252a33' },
+  });
+  lineSeries = chart.addLineSeries({ color: '#00d4aa', lineWidth: 2 });
+  window.addEventListener('resize', () => chart.applyOptions({ width: c.clientWidth }));
+}
 
-      volumeSeries = chart.addHistogramSeries({
-        color: '#26a69a', priceFormat: { type: 'volume' },
-        priceScaleId: '',
-      });
-      volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
+async function startGame() {
+  const ticker = document.getElementById('tickerSelect').value;
+  const steps = parseInt(document.getElementById('stepsSelect').value);
 
-      chart.timeScale().fitContent();
-      window.addEventListener('resize', () => chart.applyOptions({ width: container.clientWidth }));
-    }
+  const r = await api('/api/game/start', {
+    method: 'POST',
+    body: JSON.stringify({ ticker, mode: gameMode, days: steps }),
+  });
+  if (r.detail) { alert(r.detail); return; }
 
-    // Run simulation
-    async function runSimulation() {
-      const ticker = document.getElementById('tickerSelect').value;
-      const interval = document.getElementById('intervalSelect').value;
-      const strategy = document.getElementById('strategySelect').value;
+  gameId = r.episode_id;
+  totalSteps = r.total_steps;
+  currentStep = 0;
+  locked = false;
 
-      const data = await api(`/api/backtest/prices/${ticker}`);
-      if (!data.length) { alert('No price data'); return; }
+  document.getElementById('setupScreen').style.display = 'none';
+  document.getElementById('gameScreen').style.display = 'block';
+  document.getElementById('resultsScreen').style.display = 'none';
 
-      // Build candlestick data
-      const candles = data.map(d => ({
-        time: d.date,
-        open: d.price * 0.99,
-        high: d.price * 1.02,
-        low: d.price * 0.98,
-        close: d.price,
-      }));
+  buildPips();
+  loadState();
+}
 
-      const volumes = data.map(d => ({
-        time: d.date,
-        value: Math.random() * 1000000 + 500000,
-        color: d.price > (data[data.indexOf(d)-1]?.price || d.price) ? '#00d4aa44' : '#ff837a44',
-      }));
+function buildPips() {
+  const el = document.getElementById('stepPips');
+  el.innerHTML = '';
+  for (let i = 0; i < totalSteps; i++) {
+    const pip = document.createElement('div');
+    pip.className = 'pip' + (i === 0 ? ' current' : '');
+    pip.id = 'pip-' + i;
+    el.appendChild(pip);
+  }
+}
 
-      candleSeries.setData(candles);
-      volumeSeries.setData(volumes);
-      chart.timeScale().fitContent();
+async function loadState() {
+  const s = await api(`/api/game/${gameId}/state`);
+  lastState = s;
+  currentStep = s.step;
+  locked = false;
 
-      // Generate buy/sell markers
-      const trades = [];
-      let position = 0;
-      let entryPrice = 0;
-      
-      candles.forEach((c, i) => {
-        if (strategy === 'buyhold' && i === 0) {
-          position = 1000;
-          entryPrice = c.close;
-          markers.push({ time: c.time, position: 'belowBar', color: '#00d4aa', shape: 'arrowUp', text: 'BUY' });
-          trades.push({ date: c.time, action: 'BUY', price: c.close, qty: position, pnl: 0, source: 'strategy' });
-        } else if (strategy === 'ai') {
-          // AI strategy: buy on dip, sell on rally
-          if (i > 0 && c.close < candles[i-1].close * 0.97 && position === 0) {
-            position = 1000;
-            entryPrice = c.close;
-            markers.push({ time: c.time, position: 'belowBar', color: '#00d4aa', shape: 'arrowUp', text: 'AI BUY' });
-            trades.push({ date: c.time, action: 'BUY', price: c.close, qty: position, pnl: 0, source: 'ai' });
-          } else if (i > 0 && c.close > entryPrice * 1.1 && position > 0) {
-            const pnl = (c.close - entryPrice) * position;
-            markers.push({ time: c.time, position: 'aboveBar', color: '#ff837a', shape: 'arrowDown', text: 'AI SELL' });
-            trades.push({ date: c.time, action: 'SELL', price: c.close, qty: position, pnl: pnl, source: 'ai' });
-            position = 0;
-          }
-        }
-      });
+  // Update chart
+  if (s.chart && s.chart.length > 0) {
+    const data = s.chart.map(p => ({ time: p.date, value: p.price }));
+    lineSeries.setData(data);
+    chart.timeScale().fitContent();
+  }
 
-      candleSeries.setMarkers(markers);
+  // Update Fish card
+  const dir = s.fish.direction;
+  const badge = document.getElementById('fishDirection');
+  badge.textContent = dir;
+  badge.className = 'direction-badge dir-' + dir.toLowerCase();
 
-      // Calculate stats
-      const totalReturn = ((candles[candles.length-1].close - candles[0].close) / candles[0].close * 100).toFixed(2);
-      const wins = trades.filter(t => t.pnl > 0).length;
-      const winRate = trades.length > 0 ? (wins / trades.length * 100).toFixed(0) : 0;
+  document.getElementById('fishTicker').textContent = s.ticker;
+  document.getElementById('fishDate').textContent = s.asof;
 
-      document.getElementById('resReturn').textContent = `${totalReturn}%`;
-      document.getElementById('resTrades').textContent = trades.length;
-      document.getElementById('resWinRate').textContent = `${winRate}%`;
-      document.getElementById('resMaxDD').textContent = '-12.5%';
+  const conf = s.fish.confidence;
+  document.getElementById('fishConfText').textContent = (conf * 100).toFixed(0) + '%';
+  const bar = document.getElementById('fishConfBar');
+  bar.style.width = (conf * 100) + '%';
+  bar.style.background = conf > 0.6 ? '#00d4aa' : conf > 0.3 ? '#f0b429' : '#ff837a';
 
-      // Trade log
-      const tbody = document.querySelector('#tradeLog tbody');
-      tbody.innerHTML = trades.map(t => {
-        const cls = t.pnl >= 0 ? 'positive' : 'negative';
-        return `<tr>
-          <td>${t.date}</td>
-          <td style="color:${t.action==='BUY'?'#00d4aa':'#ff837a'}">${t.action}</td>
-          <td>${t.price.toFixed(2)}</td>
-          <td>${t.qty}</td>
-          <td class="${cls}">${t.pnl >= 0 ? '+' : ''}${t.pnl.toFixed(2)}</td>
-          <td>${t.source}</td>
-        </tr>`;
-      }).join('');
+  document.getElementById('fishVotesLong').textContent = s.fish.votes_long + 'L';
+  document.getElementById('fishVotesShort').textContent = s.fish.votes_short + 'S';
+  document.getElementById('fishVotesTotal').textContent = s.fish.votes_total + ' total';
 
-      document.getElementById('resultsSection').style.display = 'block';
-    }
+  // Forecast
+  const f = s.fish.forecast;
+  document.getElementById('fc1d').textContent = f['1d'] ? (f['1d'].p_up * 100).toFixed(0) + '%' : '-';
+  document.getElementById('fc20d').textContent = f['20d'] ? (f['20d'].p_up * 100).toFixed(0) + '%' : '-';
+  document.getElementById('fcVol').textContent = s.fish.vol_20d ? s.fish.vol_20d.toFixed(0) + '%' : '-';
+  document.getElementById('fishExpRet20').textContent = f['20d'] ? 'exp: ' + f['20d'].expected.toFixed(1) + '%' : '';
+  document.getElementById('fishQ10').textContent = f['20d'] ? 'q10: ' + f['20d'].q10.toFixed(1) + '%' : '';
+  document.getElementById('fishQ90').textContent = f['20d'] ? 'q90: ' + f['20d'].q90.toFixed(1) + '%' : '';
 
-    initChart();
-  </script>
+  // Reset UI
+  document.getElementById('weightSlider').value = 50;
+  updateWeightLabel();
+  document.getElementById('lockBtn').disabled = false;
+  document.getElementById('lockBtn').textContent = 'Lock Decision';
+  document.getElementById('lockBtn').className = 'btn-lock';
+  document.getElementById('nextBtn').disabled = true;
+  document.getElementById('outcomeFlash').style.display = 'none';
+
+  // Update pips
+  for (let i = 0; i < totalSteps; i++) {
+    const pip = document.getElementById('pip-' + i);
+    if (pip) pip.className = 'pip' + (i === currentStep ? ' current' : i < currentStep ? ' done' : '');
+  }
+
+  // Update running scores
+  document.getElementById('playerReturn').textContent = '...';
+  document.getElementById('fishReturn').textContent = '...';
+  document.getElementById('bhReturn').textContent = '...';
+}
+
+function updateWeightLabel() {
+  const v = document.getElementById('weightSlider').value;
+  document.getElementById('weightLabel').textContent = v + '%';
+}
+
+async function lockDecision() {
+  const weight = parseInt(document.getElementById('weightSlider').value) / 100;
+  const r = await api(`/api/game/${gameId}/decision`, {
+    method: 'POST',
+    body: JSON.stringify({ target_weight: weight }),
+  });
+  if (r.error) { alert(r.error); return; }
+
+  locked = true;
+  document.getElementById('lockBtn').disabled = true;
+  document.getElementById('lockBtn').textContent = '✓ Locked';
+  document.getElementById('lockBtn').className = 'btn-lock locked';
+  document.getElementById('nextBtn').disabled = false;
+}
+
+async function advanceStep() {
+  const r = await api(`/api/game/${gameId}/advance`, { method: 'POST' });
+  if (r.error) { alert(r.error); return; }
+
+  // Show outcome
+  const flash = document.getElementById('outcomeFlash');
+  const ret = r.return_next;
+  flash.textContent = `Day revealed: ${ret >= 0 ? '+' : ''}${ret.toFixed(2)}% | Fish: ${r.fish_pnl >= 0 ? '+' : ''}${r.fish_pnl.toFixed(2)}% | You: ${r.player_pnl >= 0 ? '+' : ''}${r.player_pnl.toFixed(2)}%`;
+  flash.className = 'outcome-flash ' + (r.player_pnl >= 0 ? 'outcome-win' : 'outcome-lose');
+  flash.style.display = 'block';
+
+  // Update pip
+  const pip = document.getElementById('pip-' + currentStep);
+  if (pip) pip.className = 'pip ' + (r.player_pnl >= 0 ? 'win' : 'lose');
+
+  // Update running scores (approximate)
+  const pr = document.getElementById('playerReturn');
+  const fr = document.getElementById('fishReturn');
+  const br = document.getElementById('bhReturn');
+  pr.textContent = (parseFloat(pr.textContent) || 0) + r.player_pnl;
+  fr.textContent = (parseFloat(fr.textContent) || 0) + r.fish_pnl;
+  br.textContent = (parseFloat(br.textContent) || 0) + r.bh_pnl;
+  pr.style.color = parseFloat(pr.textContent) >= 0 ? '#00d4aa' : '#ff837a';
+  fr.style.color = parseFloat(fr.textContent) >= 0 ? '#00d4aa' : '#ff837a';
+  br.style.color = parseFloat(br.textContent) >= 0 ? '#00d4aa' : '#ff837a';
+
+  if (r.completed) {
+    setTimeout(showResults, 1500);
+  } else {
+    setTimeout(loadState, 800);
+  }
+}
+
+async function showResults() {
+  const r = await api(`/api/game/${gameId}/result`);
+  if (!r || !r.scores) { alert('No results'); return; }
+
+  document.getElementById('gameScreen').style.display = 'none';
+  document.getElementById('resultsScreen').style.display = 'block';
+
+  const s = r.scores;
+  document.getElementById('finalPlayer').textContent = (s.player_return >= 0 ? '+' : '') + s.player_return.toFixed(1) + '%';
+  document.getElementById('finalPlayer').style.color = s.player_return >= 0 ? '#00d4aa' : '#ff837a';
+  document.getElementById('finalFish').textContent = (s.fish_return >= 0 ? '+' : '') + s.fish_return.toFixed(1) + '%';
+  document.getElementById('finalFish').style.color = s.fish_return >= 0 ? '#00d4aa' : '#ff837a';
+  document.getElementById('finalBH').textContent = (s.bh_return >= 0 ? '+' : '') + s.bh_return.toFixed(1) + '%';
+
+  const edge = s.residual_edge;
+  document.getElementById('residualEdge').textContent = (edge >= 0 ? '+' : '') + edge.toFixed(1) + '%';
+  document.getElementById('residualEdge').style.color = edge >= 0 ? '#00d4aa' : '#ff837a';
+
+  const brier = s.calibration_brier;
+  document.getElementById('brierScore').textContent = brier != null ? brier.toFixed(3) : 'N/A';
+
+  document.getElementById('resultTitle').textContent = edge >= 0 ? '🎉 You Beat Fish!' : '🐟 Fish Wins This Round';
+  document.getElementById('resultSubtitle').textContent = `Residual edge: ${edge >= 0 ? '+' : ''}${edge.toFixed(1)}% over ${r.total_steps} steps on ${r.ticker}`;
+
+  // Calibration table
+  const tbody = document.querySelector('#calibrationTable tbody');
+  tbody.innerHTML = (r.calibration || []).map(c =>
+    `<tr><td>${c.confidence_range}</td><td>${(c.hit_rate * 100).toFixed(1)}%</td><td>${c.count}</td><td>${c.calibration_gap.toFixed(3)}</td></tr>`
+  ).join('');
+}
+
+function resetGame() {
+  gameId = null;
+  document.getElementById('setupScreen').style.display = 'block';
+  document.getElementById('gameScreen').style.display = 'none';
+  document.getElementById('resultsScreen').style.display = 'none';
+}
+
+initChart();
+</script>
 </body>
 </html>
-
-<!-- Extended backtest functionality -->
-<script>
-// A22: Add support/resistance lines
-function addSupportResistance(candles) {
-  const lows = candles.map(c => c.low);
-  const highs = candles.map(c => c.high);
-  const support = Math.min(...lows);
-  const resistance = Math.max(...highs);
-  
-  candleSeries.createPriceLine({ price: support, color: '#00d4aa', lineWidth: 1, lineStyle: 2, title: 'Support' });
-  candleSeries.createPriceLine({ price: resistance, color: '#ff837a', lineWidth: 1, lineStyle: 2, title: 'Resistance' });
-}
-
-// A23: Multi-interval simulation
-async function runMultiInterval() {
-  const ticker = document.getElementById('tickerSelect').value;
-  const data = await api(`/api/backtest/prices/${ticker}`);
-  
-  // Run at each interval
-  const intervals = {'1M': 1, '1W': 4, '1D': 22};
-  const interval = document.getElementById('intervalSelect').value;
-  const steps = intervals[interval] || 1;
-  
-  let position = 0, entryPrice = 0, cash = 100000;
-  const trades = [];
-  
-  for (let i = 0; i < data.length; i += steps) {
-    const c = data[i];
-    // Simple AI strategy: buy on dips, sell on rallies
-    if (i > 0 && c.price < data[i-1].price * 0.95 && position === 0) {
-      position = Math.floor(cash / c.price);
-      entryPrice = c.price;
-      cash -= position * c.price;
-      trades.push({date: c.date, action: 'BUY', price: c.price, qty: position, source: 'ai'});
-    } else if (i > 0 && c.price > entryPrice * 1.15 && position > 0) {
-      cash += position * c.price;
-      trades.push({date: c.date, action: 'SELL', price: c.price, qty: position, pnl: (c.price - entryPrice) * position, source: 'ai'});
-      position = 0;
-    }
-  }
-  
-  return {trades, finalValue: cash + position * data[data.length-1].price};
-}
-</script>
