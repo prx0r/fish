@@ -69,13 +69,28 @@ def _calmar(total_return: float, max_dd: float) -> float:
 
 
 def _build_result(name: str, trades: list[dict], closes: list[float]) -> StrategyResult:
-    total_pnl = sum(t.get("pnl", 0) for t in trades)
-    initial = closes[0] * 1000 if closes else 1
-    total_return = total_pnl / initial
-    returns = _returns(closes)
-    wins = sum(1 for t in trades if t.get("pnl", 0) > 0)
-    max_dd = _max_drawdown(closes)
-    
+    """Build result from trades. Computes equity curve from trade PnL, not raw prices."""
+    # Build equity curve from trades
+    equity = [10000.0]  # Start with $10k
+    for t in trades:
+        pnl = t.get("pnl", 0)
+        qty = t.get("qty", 1000)
+        # Scale pnl to position size (assume 1000 shares per trade)
+        equity.append(equity[-1] + pnl)
+
+    # Returns from equity curve
+    returns = _returns(equity) if len(equity) > 1 else []
+
+    # Total return
+    total_return = (equity[-1] - equity[0]) / equity[0] if equity else 0
+
+    # Win rate from SELL trades only
+    sell_trades = [t for t in trades if t.get("action") == "SELL"]
+    wins = sum(1 for t in sell_trades if t.get("pnl", 0) > 0)
+
+    # Max drawdown on equity curve
+    max_dd = _max_drawdown(equity) if equity else 0
+
     # Holding periods
     holding_periods = []
     for i in range(0, len(trades) - 1, 2):
@@ -83,17 +98,17 @@ def _build_result(name: str, trades: list[dict], closes: list[float]) -> Strateg
             hold = trades[i+1].get("day", 0) - trades[i].get("day", 0)
             holding_periods.append(hold)
     avg_hold = sum(holding_periods) / len(holding_periods) if holding_periods else 0
-    
+
     # Turnover
     total_traded = sum(abs(t.get("qty", 1000) * t.get("price", 0)) for t in trades)
     avg_value = sum(closes) / len(closes) * 1000 if closes else 1
     turnover = total_traded / (avg_value * len(trades)) if trades else 0
-    
+
     return StrategyResult(
         name=name, trades=trades,
         total_return=total_return, sharpe=_sharpe(returns),
         sortino=_sortino(returns), calmar=_calmar(total_return, max_dd),
-        max_drawdown=max_dd, win_rate=wins / len(trades) * 100 if trades else 0,
+        max_drawdown=max_dd, win_rate=wins / len(sell_trades) * 100 if sell_trades else 0,
         trades_count=len(trades), turnover=turnover,
         avg_holding_period=avg_hold,
     )

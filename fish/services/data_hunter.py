@@ -288,6 +288,109 @@ class DataHunter:
         self.datasets.extend(lobster_datasets)
         return lobster_datasets
     
+    def discover_crypto_lob(self) -> list[DatasetMetadata]:
+        """Discover crypto LOB datasets for training."""
+        crypto_datasets = [
+            DatasetMetadata(
+                dataset_id="binance-btc-lob",
+                source="binance",
+                markets=["crypto"],
+                symbols="BTCUSDT",
+                frequency="tick",
+                depth="L20",
+                trades=True,
+                orders=True,
+                cancellations=True,
+                license="free",
+                cost=0,
+                auth_required=False,
+                quality_score=0.85,
+                download_method="api",
+                url="https://api.binance.com/api/v3/depth",
+                description="Binance BTC order book snapshots",
+            ),
+            DatasetMetadata(
+                dataset_id="binance-eth-lob",
+                source="binance",
+                markets=["crypto"],
+                symbols="ETHUSDT",
+                frequency="tick",
+                depth="L20",
+                trades=True,
+                orders=True,
+                cancellations=True,
+                license="free",
+                cost=0,
+                auth_required=False,
+                quality_score=0.8,
+                download_method="api",
+                url="https://api.binance.com/api/v3/depth",
+                description="Binance ETH order book snapshots",
+            ),
+        ]
+        
+        self.datasets.extend(crypto_datasets)
+        return crypto_datasets
+    
+    def discover_exchange_samples(self) -> list[DatasetMetadata]:
+        """Discover exchange FTP/sample datasets."""
+        exchange_datasets = [
+            DatasetMetadata(
+                dataset_id="nasdaq-itch-sample",
+                source="nasdaq",
+                markets=["us"],
+                frequency="tick",
+                depth="L3",
+                trades=True,
+                orders=True,
+                cancellations=True,
+                license="free-sample",
+                cost=0,
+                auth_required=False,
+                quality_score=0.9,
+                download_method="http",
+                url="https://www.nasdaqtrader.com/TraderNews.aspx?id=nva2008-091",
+                description="Nasdaq TotalView-ITCH sample data",
+            ),
+            DatasetMetadata(
+                dataset_id="cboe-europe-pitch-sample",
+                source="cboe",
+                markets=["europe", "uk"],
+                frequency="tick",
+                depth="L2",
+                trades=True,
+                orders=True,
+                cancellations=True,
+                license="free-sample",
+                cost=0,
+                auth_required=False,
+                quality_score=0.85,
+                download_method="http",
+                url="https://datashop.cboe.com/cboe-europe-equities-trades-and-quotes-data",
+                description="Cboe Europe PITCH sample data",
+            ),
+            DatasetMetadata(
+                dataset_id="lseg-websocket-example",
+                source="lseg",
+                markets=["uk"],
+                symbols="VOD.L",
+                frequency="tick",
+                depth="L2",
+                trades=True,
+                orders=True,
+                license="free-sample",
+                cost=0,
+                auth_required=False,
+                quality_score=0.8,
+                download_method="git_clone",
+                url="https://github.com/LSEG-API-Samples/Article.WebsocketAPI.Python.OrderBook",
+                description="LSEG WebSocket OrderBook example for VOD.L",
+            ),
+        ]
+        
+        self.datasets.extend(exchange_datasets)
+        return exchange_datasets
+    
     def discover_all(self) -> list[DatasetMetadata]:
         """Discover datasets from all sources."""
         all_datasets = []
@@ -295,6 +398,8 @@ class DataHunter:
         all_datasets.extend(self.discover_kaggle())
         all_datasets.extend(self.discover_github())
         all_datasets.extend(self.discover_lobster())
+        all_datasets.extend(self.discover_crypto_lob())
+        all_datasets.extend(self.discover_exchange_samples())
         
         return all_datasets
     
