@@ -1,120 +1,260 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#0b0c10">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  __MANIFEST__
-  __APPLE_ICON__
-  __APPLE_APP_TITLE__
-  <title>__TITLE__</title>
-  <link rel="stylesheet" href="/static/styles.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fish — Portfolio Intelligence</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0a0f; color: #e0e0e0; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        h1 { color: #00d4aa; font-size: 28px; margin-bottom: 10px; }
+        h2 { color: #00d4aa; font-size: 20px; margin: 20px 0 10px; }
+        .card { background: #1a1a2e; border-radius: 12px; padding: 20px; margin: 10px 0; border: 1px solid #2a2a4a; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px; }
+        .metric { text-align: center; padding: 15px; }
+        .metric-value { font-size: 32px; font-weight: bold; color: #00d4aa; }
+        .metric-label { font-size: 12px; color: #888; margin-top: 5px; }
+        .positive { color: #00d4aa; }
+        .negative { color: #ff4444; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #2a2a4a; }
+        th { color: #00d4aa; font-weight: 600; }
+        .btn { background: #00d4aa; color: #0a0a0f; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; }
+        .btn:hover { background: #00b894; }
+        .chat-box { background: #1a1a2e; border-radius: 12px; padding: 15px; margin: 10px 0; border: 1px solid #2a2a4a; height: 300px; overflow-y: auto; }
+        .chat-input { width: 100%; padding: 10px; background: #2a2a4a; border: 1px solid #3a3a5a; border-radius: 8px; color: #e0e0e0; margin-top: 10px; }
+        .chat-input:focus { outline: none; border-color: #00d4aa; }
+        .msg { margin: 10px 0; padding: 10px; border-radius: 8px; }
+        .msg-user { background: #2a2a4a; }
+        .msg-ai { background: #1a3a2e; border-left: 3px solid #00d4aa; }
+        .tab { display: inline-block; padding: 10px 20px; cursor: pointer; border-bottom: 2px solid transparent; color: #888; }
+        .tab.active { color: #00d4aa; border-bottom-color: #00d4aa; }
+        .hidden { display: none; }
+    </style>
 </head>
 <body>
-  <div class="shell">
-    <aside class="sidebar">
-      <a class="brand" href="/">
-        <span class="brand-mark">F</span>
-        <span>Feedify</span>
-      </a>
-      <div class="side-label">PAGES</div>
-      <nav class="feed-nav">
-        <a href="/" class="active"><span class="nav-icon">📊</span>Feed</a>
-        <a href="/insiders"><span class="nav-icon">🔍</span>Insiders</a>
-        <a href="/frontier"><span class="nav-icon">⚛️</span>Frontier</a>
-      </nav>
-      <div class="side-label">YOUR FEEDS</div>
-      <nav id="feedNav" class="feed-nav"></nav>
-      <button id="newFeedBtn" class="new-feed">+ New feed</button>
-      <div class="side-spacer"></div>
-      <div class="source-mini">
-        <div class="side-label">SOURCES</div>
-        <div id="sourceMini"></div>
-      </div>
-    </aside>
-
-    <main>
-      <header class="topbar">
-        <div>
-          <div class="eyebrow" id="eyebrow">PERSONAL INTELLIGENCE NETWORK</div>
-          <h1 id="pageTitle">Feedify Alpha</h1>
-          <p id="pageDescription">Compile noisy sources into signals you actually want.</p>
+    <div class="container">
+        <h1>🐟 Fish — Portfolio Intelligence</h1>
+        
+        <!-- Tabs -->
+        <div style="margin: 20px 0;">
+            <span class="tab active" onclick="showTab('dashboard')">Dashboard</span>
+            <span class="tab" onclick="showTab('chat')">AI Chat</span>
+            <span class="tab" onclick="showTab('trading')">Paper Trading</span>
+            <span class="tab" onclick="showTab('compare')">Compare</span>
+            <span class="tab" onclick="showTab('backtest')">Backtest Game</span>
         </div>
-        <div class="top-actions">
-          <button id="shareBtn" class="ghost hidden">Share</button>
-          <button id="installBtn" class="ghost hidden">Add as app</button>
-          <button id="ingestBtn" class="primary">Refresh signals</button>
+        
+        <!-- Dashboard -->
+        <div id="dashboard">
+            <div class="grid">
+                <div class="card metric">
+                    <div class="metric-value" id="total-value">£183,826</div>
+                    <div class="metric-label">Portfolio Value</div>
+                </div>
+                <div class="card metric">
+                    <div class="metric-value positive" id="total-return">+7.66%</div>
+                    <div class="metric-label">Total Return</div>
+                </div>
+                <div class="card metric">
+                    <div class="metric-value positive" id="total-gain">+£13,082</div>
+                    <div class="metric-label">Unrealised P/L</div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2>Positions</h2>
+                <table id="positions-table">
+                    <thead>
+                        <tr><th>Ticker</th><th>Name</th><th>Value</th><th>Gain</th><th>%</th></tr>
+                    </thead>
+                    <tbody id="positions-body"></tbody>
+                </table>
+            </div>
+            
+            <div class="card">
+                <h2>Daily Brief</h2>
+                <div id="brief-content" style="white-space: pre-wrap; font-size: 14px;"></div>
+            </div>
         </div>
-      </header>
-
-      <section id="homeView">
-        <div class="hero-card">
-          <div>
-            <div class="pill">Physical validation > generation as AI makes cognition cheap</div>
-            <h2>The bottleneck migration thesis</h2>
-            <p>As AI makes generation cheaper, scarce physical validation, packaging, manufacturing, test, energy and characterization become disproportionately valuable.</p>
-          </div>
-          <button id="heroCreateBtn" class="primary large">See the thesis</button>
+        
+        <!-- Chat -->
+        <div id="chat" class="hidden">
+            <div class="card">
+                <h2>AI Trading Advisor</h2>
+                <div class="chat-box" id="chat-box"></div>
+                <input type="text" class="chat-input" id="chat-input" placeholder="Ask about your portfolio..." onkeypress="if(event.key==='Enter')sendChat()">
+                <button class="btn" onclick="sendChat()" style="margin-top: 10px;">Send</button>
+            </div>
         </div>
-
-        <div class="section-head">
-          <div><div class="eyebrow">PORTFOLIO</div><h2>What we're buying</h2></div>
+        
+        <!-- Paper Trading -->
+        <div id="trading" class="hidden">
+            <div class="card">
+                <h2>Paper Trading</h2>
+                <p style="color: #888;">AI suggests trades, you decide. Track who's better.</p>
+                <div style="margin: 15px 0;">
+                    <select id="trade-ticker" style="padding: 10px; background: #2a2a4a; border: 1px solid #3a3a5a; border-radius: 8px; color: #e0e0e0;">
+                        <option value="MPAL">MPAL - MedPal AI</option>
+                        <option value="COHR">COHR - Coherent</option>
+                        <option value="TSLA">TSLA - Tesla ETP</option>
+                        <option value="NBIS">NBIS - Nebius</option>
+                        <option value="META">META - Meta</option>
+                    </select>
+                    <button class="btn" onclick="getSuggestion()">Get AI Suggestion</button>
+                </div>
+                <div id="suggestion-box" class="card" style="display: none;"></div>
+            </div>
         </div>
-        <div id="portfolioGrid" class="feed-grid"></div>
-
-        <div class="section-head">
-          <div><div class="eyebrow">LIVE</div><h2>Feeds</h2></div>
+        
+        <!-- Compare -->
+        <div id="compare" class="hidden">
+            <div class="card">
+                <h2>Portfolio Comparison</h2>
+                <div id="compare-content"></div>
+            </div>
         </div>
-        <div id="feedCards" class="feed-grid"></div>
-
-        <div class="section-head two-col-head">
-          <div><div class="eyebrow">ENGINE</div><h2>Source status</h2></div>
-          <div class="legend"><span class="dot live"></span> ready <span class="dot off"></span> needs key</div>
+        
+        <!-- Backtest Game -->
+        <div id="backtest" class="hidden">
+            <div class="card">
+                <h2>Backtest Game: AI vs You</h2>
+                <p style="color: #888;">Go back to January 2026. Each month, decide: buy, sell, or hold. Then see how the AI would have done.</p>
+                <button class="btn" onclick="runBacktest()">Run Simulation</button>
+                <div id="backtest-results" style="margin-top: 20px;"></div>
+            </div>
         </div>
-        <div id="sourceGrid" class="source-grid"></div>
-      </section>
+    </div>
 
-      <section id="feedView" class="hidden">
-        <div class="feed-toolbar">
-          <div id="feedPrompt" class="prompt-box"></div>
-          <div class="toolbar-right">
-            <label>Minimum score <input id="scoreFilter" type="range" min="0" max="1" step="0.05" value="0"></label>
-            <span id="scoreValue">0.00</span>
-          </div>
-        </div>
-        <div class="ai-box" id="feedAiBox">
-          <h3>🧠 AI ANALYSIS</h3>
-          <div class="content" id="feedAiSummary">Loading AI analysis...</div>
-        </div>
-        <div id="signalList" class="signal-list"></div>
-      </section>
+    <script>
+        // Load portfolio data
+        fetch('/api/stocks').then(r => r.json()).then(data => {
+            const tbody = document.getElementById('positions-body');
+            let totalValue = 0, totalGain = 0;
+            data.forEach(p => {
+                const notes = JSON.parse(p.notes || '{}');
+                const value = notes.value || 0;
+                const gain = notes.gain || 0;
+                const pct = notes.pct || 0;
+                totalValue += value;
+                totalGain += gain;
+                const cls = gain >= 0 ? 'positive' : 'negative';
+                tbody.innerHTML += `<tr>
+                    <td><strong>${p.ticker}</strong></td>
+                    <td>${p.name}</td>
+                    <td>£${value.toLocaleString()}</td>
+                    <td class="${cls}">£${gain >= 0 ? '+' : ''}${gain.toLocaleString()}</td>
+                    <td class="${cls}">${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%</td>
+                </tr>`;
+            });
+            document.getElementById('total-value').textContent = `£${totalValue.toLocaleString()}`;
+            const ret = (totalGain / (totalValue - totalGain) * 100).toFixed(2);
+            document.getElementById('total-return').textContent = `${ret >= 0 ? '+' : ''}${ret}%`;
+            document.getElementById('total-gain').textContent = `£${totalGain >= 0 ? '+' : ''}${totalGain.toLocaleString()}`;
+        });
 
-      <div class="chat-bar" id="chatBar">
-        <textarea class="chat-input" id="chatInput" placeholder="Ask about any signal, ticker, or insider activity..." rows="1"></textarea>
-        <button class="chat-send" id="chatSend">Send</button>
-      </div>
-    </main>
-  </div>
+        // Load daily brief
+        fetch('/api/portfolio/brief').then(r => r.json()).then(data => {
+            document.getElementById('brief-content').textContent = data.brief;
+        });
 
-  <dialog id="feedDialog">
-    <form id="feedForm" method="dialog">
-      <button class="dialog-x" type="button" id="closeDialog">×</button>
-      <div class="eyebrow">NEW FEED APP</div>
-      <h2>What should this feed know to care about?</h2>
-      <label>Name<input name="name" required placeholder="Agent Commerce Alpha"></label>
-      <label>Prompt<textarea name="prompt" required rows="6" placeholder="Only show me newly buildable commerce opportunities from obscure primary-source engineers, MCPs, APIs and verified market data. Less noise, higher source proximity."></textarea></label>
-      <div class="form-row">
-        <label>Icon<input name="icon" value="⚡" maxlength="2"></label>
-        <label>Visibility<select name="public"><option value="true">Shareable</option><option value="false">Private</option></select></label>
-      </div>
-      <button class="primary large" type="submit">Compile feed</button>
-      <p class="fine">Feedify converts the prompt into weights, filters and keyword priors. You can tune the JSON directly via API.</p>
-    </form>
-  </dialog>
+        // Load comparison
+        fetch('/api/performance/compare?user_ids=chris,cathy').then(r => r.json()).then(data => {
+            const div = document.getElementById('compare-content');
+            let html = '<table><thead><tr><th>User</th><th>Value</th><th>Gain</th><th>Return</th></tr></thead><tbody>';
+            for (const [uid, info] of Object.entries(data.comparison)) {
+                html += `<tr><td>${uid}</td><td>£${info.total_value.toLocaleString()}</td><td>£${info.total_gain.toLocaleString()}</td><td>${info.return_pct.toFixed(2)}%</td></tr>`;
+            }
+            html += '</tbody></table>';
+            div.innerHTML = html;
+        });
 
-  <div id="toast" class="toast hidden"></div>
-  <script src="/static/app.js" defer></script>
+        // Chat
+        function sendChat() {
+            const input = document.getElementById('chat-input');
+            const msg = input.value.trim();
+            if (!msg) return;
+            const box = document.getElementById('chat-box');
+            box.innerHTML += `<div class="msg msg-user">${msg}</div>`;
+            input.value = '';
+            
+            fetch('/api/portfolio/chat', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({message: msg, user_id: 'chris'}),
+            }).then(r => r.json()).then(data => {
+                box.innerHTML += `<div class="msg msg-ai">${data.response}</div>`;
+                box.scrollTop = box.scrollHeight;
+            });
+        }
+
+        // Paper trading
+        function getSuggestion() {
+            const ticker = document.getElementById('trade-ticker').value;
+            fetch('/api/trading/suggest', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ticker: ticker}),
+            }).then(r => r.json()).then(data => {
+                const box = document.getElementById('suggestion-box');
+                box.style.display = 'block';
+                box.innerHTML = `
+                    <h3>${data.ticker} — AI Suggestion</h3>
+                    <p><strong>Action:</strong> ${data.action}</p>
+                    <p><strong>Confidence:</strong> ${data.confidence}</p>
+                    <p><strong>Reasoning:</strong> ${data.reasoning}</p>
+                    <button class="btn" onclick="decideSuggestion(${data.id}, 'accepted')">Accept</button>
+                    <button class="btn" style="background: #ff4444;" onclick="decideSuggestion(${data.id}, 'rejected')">Reject</button>
+                `;
+            });
+        }
+
+        function decideSuggestion(id, decision) {
+            fetch('/api/trading/decide', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({suggestion_id: id, decision: decision}),
+            }).then(r => r.json()).then(data => {
+                document.getElementById('suggestion-box').innerHTML = `<p>Decision: ${decision}</p>`;
+            });
+        }
+
+        // Tab switching
+        function showTab(name) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('[id]').forEach(d => {
+                if (d.id === name) d.classList.remove('hidden');
+                else if (['dashboard','chat','trading','compare','backtest'].includes(d.id)) d.classList.add('hidden');
+            });
+            event.target.classList.add('active');
+        }
+
+        // Backtest game
+        function runBacktest() {
+            const div = document.getElementById('backtest-results');
+            div.innerHTML = '<p style="color: #00d4aa;">Running simulation...</p>';
+            
+            fetch('/api/backtest/simulate', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({}),
+            }).then(r => r.json()).then(data => {
+                let html = `<div class="card">
+                    <h3>Results: Jan 2026 → Sep 2026</h3>
+                    <p>Initial: £${data.initial_value.toLocaleString()}</p>
+                    <p>Final: £${data.final_value.toLocaleString()}</p>
+                    <p class="${data.total_return >= 0 ? 'positive' : 'negative'}">Return: ${data.total_return >= 0 ? '+' : ''}${data.total_return.toFixed(2)}%</p>
+                    <h4>AI Decisions:</h4>`;
+                
+                data.timeline.forEach(t => {
+                    html += `<p><strong>${t.date}:</strong> £${t.portfolio_value.toLocaleString()} — ${t.ai_decision.substring(0, 100)}...</p>`;
+                });
+                
+                html += '</div>';
+                div.innerHTML = html;
+            });
+        }
+    </script>
 </body>
 </html>

@@ -62,8 +62,17 @@ def _index_html(feed: Feed | None = None) -> str:
 
 
 @app.get("/", response_class=HTMLResponse)
-def home() -> str:
-    return _index_html()
+def home():
+    """Serve the main dashboard."""
+    return (STATIC / "index.html").read_text(encoding="utf-8")
+
+
+@app.get("/static/{path:path}")
+def static_file(path: str):
+    file = (STATIC / path).resolve()
+    if STATIC.resolve() not in file.parents or not file.exists() or not file.is_file():
+        raise HTTPException(404, "Asset not found")
+    return FileResponse(file, media_type=mimetypes.guess_type(file.name)[0])
 
 
 @app.get("/reality", response_class=HTMLResponse)
@@ -1657,6 +1666,53 @@ def trading_performance(user_id: str = Query("chris")) -> dict[str, Any]:
             "user": {"trades": len(user_trades), "buys": len(user_buys)},
             "total_trades": len(trades),
         }
+
+
+# ── Backtest Game (AI vs Human) ────────────────────────────────────────────────
+
+@app.get("/api/backtest/positions")
+def backtest_positions() -> dict[str, Any]:
+    """Get initial positions for backtest game."""
+    from fish.services.backtest_game import HISTORICAL_PRICES
+    positions = []
+    with SessionLocal() as session:
+        stocks = session.scalars(select(Watchlist)).all()
+        for stock in stocks:
+            notes = json.loads(stock.notes or "{}")
+            if stock.ticker in HISTORICAL_PRICES:
+                positions.append({
+                    "ticker": stock.ticker,
+                    "name": stock.name,
+                    "qty": notes.get("qty", 0),
+                    "entry_price": notes.get("value", 0) / max(notes.get("qty", 1), 1),
+                })
+    return {"positions": positions, "start_date": "2026-01-01", "end_date": "2026-09-01"}
+
+
+@app.get("/api/backtest/prices/{ticker}")
+def backtest_prices(ticker: str) -> list[dict[str, Any]]:
+    """Get historical prices for a ticker."""
+    from fish.services.backtest_game import HISTORICAL_PRICES
+    return HISTORICAL_PRICES.get(ticker, [])
+
+
+@app.post("/api/backtest/simulate")
+def backtest_simulate(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    """Run backtest simulation: calculate returns over time."""
+    from fish.services.backtest_game import run_backtest, HISTORICAL_PRICES
+    
+    positions = []
+    with SessionLocal() as session:
+        stocks = session.scalars(select(Watchlist)).all()
+        for stock in stocks:
+            notes = json.loads(stock.notes or "{}")
+            if stock.ticker in HISTORICAL_PRICES:
+                positions.append({
+                    "ticker": stock.ticker,
+                    "qty": notes.get("qty", 0),
+                })
+    
+    return run_backtest(positions)
 
 
 # Install optional payment middleware only after all routes are declared.
