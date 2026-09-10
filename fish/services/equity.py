@@ -143,11 +143,31 @@ def compute_strategy_equity(
     equity.sortino = _sortino(equity.strategy_returns)
     equity.max_drawdown = _max_drawdown(equity.equity)
     equity.total_return = (equity.equity[-1] - equity.equity[0]) / equity.equity[0] if equity.equity else 0
-    equity.calmar = equity.total_return / abs(equity.max_drawdown) if equity.max_drawdown != 0 else 0
     
-    # Win rate
-    wins = sum(1 for t in equity.trades if t.get("action") == "SELL" and t.get("pnl", 0) > 0)
-    equity.win_rate = wins / n_trades * 100 if n_trades > 0 else 0
+    # CAGR for Calmar (annualized)
+    years = len(equity.strategy_returns) / 252 if equity.strategy_returns else 1
+    cagr = (equity.equity[-1] / equity.equity[0]) ** (1 / years) - 1 if equity.equity and years > 0 else 0
+    equity.calmar = cagr / abs(equity.max_drawdown) if equity.max_drawdown != 0 else 0
+    
+    # Win rate: compute PnL from entry/exit prices on SELL trades
+    equity.trades = []  # Reset with PnL
+    position = 0
+    entry_price = 0
+    for i in range(len(prices)):
+        new_pos = positions[i] if i < len(positions) else 0
+        turnover = abs(new_pos - position)
+        if turnover > 0:
+            if new_pos > position:  # BUY
+                entry_price = closes[i]
+                equity.trades.append({'date': dates[i], 'action': 'BUY', 'price': closes[i], 'position': new_pos})
+            elif new_pos < position:  # SELL
+                pnl = (closes[i] - entry_price) * 1000
+                equity.trades.append({'date': dates[i], 'action': 'SELL', 'price': closes[i], 'pnl': pnl, 'position': new_pos})
+        position = new_pos
+    
+    sell_trades = [t for t in equity.trades if t.get('action') == 'SELL']
+    wins = sum(1 for t in sell_trades if t.get('pnl', 0) > 0)
+    equity.win_rate = wins / len(sell_trades) * 100 if sell_trades else 0
     
     # Skewness and kurtosis (standardized)
     equity.skewness = _skewness(equity.strategy_returns)

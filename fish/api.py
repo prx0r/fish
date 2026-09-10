@@ -2717,3 +2717,85 @@ def plan_portfolio_sequence() -> dict[str, Any]:
         "average_confidence": avg_confidence,
         "n_stocks": len(portfolio_plan),
     }
+
+
+# ── Fish Game V2 — Training Environment ───────────────────────────────────────
+
+@app.get("/api/game/tickers")
+def game_tickers() -> list[dict[str, Any]]:
+    """List tickers available for game episodes."""
+    from fish.services.game_v2 import ALL_PRICES
+    return [
+        {"ticker": t, "bars": len(bars), "start": bars[0]['date'], "end": bars[-1]['date']}
+        for t, bars in ALL_PRICES.items()
+        if len(bars) > 315
+    ]
+
+
+@app.post("/api/game/start")
+def game_start(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    """Start a new game episode."""
+    from fish.services.game_v2 import create_episode
+    ticker = payload.get('ticker', 'TSLA').upper()
+    mode = payload.get('mode', 'blind')
+    days = payload.get('days', 126)
+    seed = payload.get('seed')
+    try:
+        ep = create_episode(ticker, mode=mode, episode_days=days, seed=seed)
+        return {
+            'episode_id': ep.id,
+            'ticker': ep.ticker,
+            'mode': ep.mode,
+            'start_date': ep.start_date,
+            'end_date': ep.end_date,
+            'total_steps': len(ep.steps),
+        }
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.get("/api/game/{episode_id}/state")
+def game_state(episode_id: str) -> dict[str, Any]:
+    """Get current game state. Only reveals info up to current step."""
+    from fish.services.game_v2 import get_episode_state
+    state = get_episode_state(episode_id)
+    if not state:
+        raise HTTPException(404, "Game not found")
+    return state
+
+
+@app.post("/api/game/{episode_id}/decision")
+def game_decision(episode_id: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    """Lock player's decision for current step. Cannot be changed after."""
+    from fish.services.game_v2 import lock_decision
+    target_weight = payload.get('target_weight', 0.5)
+    prob_est = payload.get('probability_estimate')
+    reason = payload.get('override_reason')
+    result = lock_decision(episode_id, target_weight, prob_est, reason)
+    if not result:
+        raise HTTPException(404, "Game not found or inactive")
+    if 'error' in result:
+        raise HTTPException(400, result['error'])
+    return result
+
+
+@app.post("/api/game/{episode_id}/advance")
+def game_advance(episode_id: str) -> dict[str, Any]:
+    """Reveal outcome and advance to next step."""
+    from fish.services.game_v2 import advance_episode
+    result = advance_episode(episode_id)
+    if not result:
+        raise HTTPException(404, "Game not found")
+    if 'error' in result:
+        raise HTTPException(400, result['error'])
+    return result
+
+
+@app.get("/api/game/{episode_id}/result")
+def game_result(episode_id: str) -> dict[str, Any]:
+    """Get final results for completed episode."""
+    from fish.services.game_v2 import get_episode_result
+    result = get_episode_result(episode_id)
+    if not result:
+        raise HTTPException(404, "Game not found or not completed")
+    return result
