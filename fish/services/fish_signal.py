@@ -34,16 +34,16 @@ class RegimeState:
 REGIME_ANIMAL_MAP = {
     "bull_low_vol":  ["Turtle", "Bull", "Fox", "Hedgehog"],
     "bull_mid_vol":  ["Turtle", "Bull", "Fox"],
-    "bull_high_vol": ["Turtle", "Bear"],  # Bull retreats in high vol
+    "bull_high_vol": ["Turtle", "Bear", "Mantis"],  # Mantis active in high vol
     "bear_low_vol":  ["Bear", "Fox", "Wolf"],
     "bear_mid_vol":  ["Bear", "Fox", "Wolf"],
-    "bear_high_vol": ["Bear", "Wolf"],  # Only contrarians survive
+    "bear_high_vol": ["Bear", "Wolf", "Mantis"],  # Mantis active in high vol
     "neutral_low":   ["Turtle", "Fox", "Hedgehog"],
     "neutral_mid":   ["Fox", "Wolf"],
-    "neutral_high":  ["Wolf"],  # Only regime detection survives
+    "neutral_high":  ["Wolf", "Mantis"],  # Mantis active in high vol
 }
 
-ALL_ANIMALS = ["Turtle", "Bull", "Bear", "Fox", "Shark", "Hedgehog", "Wolf"]
+ALL_ANIMALS = ["Turtle", "Bull", "Bear", "Fox", "Shark", "Hedgehog", "Wolf", "Mantis"]
 
 
 def detect_regime(prices: list[dict]) -> RegimeState:
@@ -118,12 +118,15 @@ def _init_animal_map():
     from fish.services.shark import SHARK_STRATEGIES
     from fish.services.hedgehog import HEDGEHOG_STRATEGIES
     from fish.services.wolf import WOLF_STRATEGIES
+    from fish.services.mantis_daily import MANTIS_DAILY_STRATEGIES
     for n, m in STRATEGY_META.items():
         ANIMAL_MAP[n] = m.get('animal', 'Unknown')
     for n in FOX_STRATEGIES: ANIMAL_MAP[n] = 'Fox'
     for n in SHARK_STRATEGIES: ANIMAL_MAP[n] = 'Shark'
     for n in HEDGEHOG_STRATEGIES: ANIMAL_MAP[n] = 'Hedgehog'
     for n in WOLF_STRATEGIES: ANIMAL_MAP[n] = 'Wolf'
+    for n in MANTIS_DAILY_STRATEGIES: ANIMAL_MAP[n] = 'Mantis'
+    for n in MANTIS_DAILY_STRATEGIES: ANIMAL_MAP[n] = 'Mantis'
 
 
 def regime_filtered_vote(prices: list[dict], regime: RegimeState) -> dict:
@@ -136,8 +139,9 @@ def regime_filtered_vote(prices: list[dict], regime: RegimeState) -> dict:
     from fish.services.shark import SHARK_STRATEGIES
     from fish.services.hedgehog import HEDGEHOG_STRATEGIES
     from fish.services.wolf import WOLF_STRATEGIES
+    from fish.services.mantis_daily import MANTIS_DAILY_STRATEGIES
     all_strats = {**BASELINE_STRATEGIES, **FOX_STRATEGIES, **SHARK_STRATEGIES,
-                  **HEDGEHOG_STRATEGIES, **WOLF_STRATEGIES}
+                  **HEDGEHOG_STRATEGIES, **WOLF_STRATEGIES, **MANTIS_DAILY_STRATEGIES}
 
     prices_fmt = [{'date': b.get('date', ''), 'price': b.get('close', b.get('price', 0)),
                     'close': b.get('close', b.get('price', 0)),
