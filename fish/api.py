@@ -648,27 +648,53 @@ def stocks_add(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
         return {"ok": True, "ticker": ticker}
 
 
-@app.get("/api/stocks/{ticker}")
-def stock_detail(ticker: str) -> dict[str, Any]:
-    """Stock detail with latest report."""
+@app.get("/api/portfolio/brief/enhanced")
+def enhanced_brief(user_id: str = Query("chris")) -> dict[str, Any]:
+    """Enhanced daily brief with technical analysis and sector allocation."""
+    from fish.services.portfolio_advisor import generate_enhanced_brief
+    with SessionLocal() as session:
+        portfolio = session.scalars(select(Watchlist)).all()
+        portfolio_data = [{
+            "ticker": w.ticker, "name": w.name, "account": "Dealing" if "ISA" not in w.ticker else "ISA",
+            "value": json.loads(w.notes or "{}").get("value", 0),
+            "gain": json.loads(w.notes or "{}").get("gain", 0),
+            "pct": json.loads(w.notes or "{}").get("pct", 0),
+            "book": json.loads(w.notes or "{}").get("book_cost", 0),
+            "sector": w.sector,
+        } for w in portfolio]
+        brief = generate_enhanced_brief(portfolio_data)
+        return {"brief": brief, "generated_at": datetime.now(timezone.utc).isoformat()}
+
+
+@app.get("/api/stocks/{ticker}/research")
+def stock_research(ticker: str) -> dict[str, Any]:
+    """Research page for a specific stock."""
     ticker = ticker.upper()
     with SessionLocal() as session:
         stock = session.scalar(select(Watchlist).where(Watchlist.ticker == ticker))
         if not stock:
             raise HTTPException(404, "Stock not found")
-        latest_report = session.scalars(
-            select(InvestorReport).where(InvestorReport.ticker == ticker).order_by(InvestorReport.date.desc())
-        ).first()
+        
+        notes = json.loads(stock.notes or "{}")
+        
+        # Get related objects from graph
+        related = session.scalars(
+            select(Object).where(Object.metadata_json["author"].as_string() != "").limit(20)
+        ).all()
+        
         return {
-            "ticker": stock.ticker, "name": stock.name, "sector": stock.sector,
-            "thesis": stock.thesis, "entry_price": stock.entry_price,
-            "current_price": stock.current_price, "stop_loss": stock.stop_loss,
-            "target_price": stock.target_price, "notes": stock.notes,
-            "latest_report": {
-                "date": latest_report.date, "summary": latest_report.summary,
-                "bull_case": latest_report.bull_case, "bear_case": latest_report.bear_case,
-                "action": latest_report.action, "confidence": latest_report.confidence,
-            } if latest_report else None,
+            "ticker": ticker,
+            "name": stock.name,
+            "thesis": stock.thesis,
+            "entry_price": stock.entry_price,
+            "current_price": stock.current_price,
+            "stop_loss": stock.stop_loss,
+            "target_price": stock.target_price,
+            "notes": notes,
+            "related_objects": [
+                {"kind": o.kind, "title": o.title[:100], "confidence": o.confidence}
+                for o in related[:10]
+            ],
         }
 
 

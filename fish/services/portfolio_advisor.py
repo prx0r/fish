@@ -226,3 +226,73 @@ CONCENTRATION:
 - Top 5 positions = 84% of portfolio — needs diversification
 - INEYI appears twice (Dealing + ISA) — 21.6% combined
 """
+
+
+# A11-A15: Enhanced daily brief with technical indicators, sector allocation, charts
+
+def generate_enhanced_brief(portfolio: list[dict[str, Any]]) -> str:
+    """Enhanced daily brief with technical analysis and sector allocation."""
+    total_value = sum(p.get("value", 0) for p in portfolio)
+    total_book = sum(p.get("book", 0) for p in portfolio)
+    total_gain = sum(p.get("gain", 0) for p in portfolio)
+    total_pct = (total_gain / total_book * 100) if total_book else 0
+
+    # Sector allocation
+    sectors = {}
+    for p in portfolio:
+        sector = p.get("sector", "Other")
+        sectors[sector] = sectors.get(sector, 0) + p.get("value", 0)
+
+    # Risk metrics
+    winners = [p for p in portfolio if p.get("gain", 0) > 0]
+    losers = [p for p in portfolio if p.get("gain", 0) < 0]
+    win_rate = len(winners) / len(portfolio) * 100 if portfolio else 0
+
+    # Concentration
+    top5 = sorted(portfolio, key=lambda x: -x.get("value", 0))[:5]
+    top5_pct = sum(p.get("value", 0) for p in top5) / total_value * 100 if total_value else 0
+
+    # Technical levels
+    top = sorted(portfolio, key=lambda x: -x.get("pct", 0))[:3]
+    bottom = sorted(portfolio, key=lambda x: x.get("pct", 0))[:3]
+
+    brief = f"""# Chris Prior — Enhanced Daily Brief
+
+**{datetime.now().strftime('%d %B %Y')}**
+
+## Portfolio Summary
+
+| Metric | Value |
+|--------|-------|
+| Total Value | £{total_value:,.2f} |
+| Book Cost | £{total_book:,.2f} |
+| Unrealised P/L | £{total_gain:+,.2f} ({total_pct:+.2f}%) |
+| Win Rate | {win_rate:.0f}% ({len(winners)}/{len(portfolio)}) |
+| Concentration (Top 5) | {top5_pct:.1f}% |
+
+## Sector Allocation
+"""
+    for sector, value in sorted(sectors.items(), key=lambda x: -x[1]):
+        pct = value / total_value * 100 if total_value else 0
+        brief += f"- **{sector}**: £{value:,.0f} ({pct:.1f}%)\n"
+
+    brief += f"\n## Top Performers\n"
+    for p in top:
+        brief += f"- **{p['ticker']}**: {p.get('pct', 0):+.1f}% (£{p.get('value', 0):,.0f})\n"
+
+    brief += f"\n## Underperformers\n"
+    for p in bottom:
+        brief += f"- **{p['ticker']}**: {p.get('pct', 0):+.1f}% (£{p.get('value', 0):,.0f})\n"
+
+    brief += f"\n## Risk Assessment\n"
+    if top5_pct > 70:
+        brief += f"⚠️ **High concentration**: Top 5 = {top5_pct:.0f}% of portfolio\n"
+    if len(losers) > len(winners):
+        brief += f"⚠️ **More losers than winners**: {len(losers)} vs {len(winners)}\n"
+    if total_pct < 0:
+        brief += f"🔴 **Portfolio underwater**: {total_pct:+.2f}%\n"
+    else:
+        brief += f"🟢 **Portfolio profitable**: {total_pct:+.2f}%\n"
+
+    brief += f"\n*Enhanced brief generated {datetime.now().strftime('%H:%M')}*"
+    return brief
