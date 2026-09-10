@@ -55,6 +55,21 @@ def block_bootstrap(
     if len(historical_returns) < block_size * 2:
         return []
     
+    # Clip extreme returns
+    clipped_returns = [max(-0.20, min(0.20, r)) for r in historical_returns]
+    
+    # Normalize returns to have realistic statistics
+    # Use last 252 days for recent regime
+    recent_returns = clipped_returns[-252:] if len(clipped_returns) > 252 else clipped_returns
+    mean_ret = sum(recent_returns) / len(recent_returns)
+    std_ret = math.sqrt(sum((r - mean_ret)**2 for r in recent_returns) / len(recent_returns))
+    
+    # Scale to realistic daily returns (mean ~0, std ~0.02)
+    if std_ret > 0:
+        normalized_returns = [(r - mean_ret) / std_ret * 0.02 for r in clipped_returns]
+    else:
+        normalized_returns = clipped_returns
+    
     scenarios = []
     
     for _ in range(n_scenarios):
@@ -62,8 +77,8 @@ def block_bootstrap(
         synthetic_returns = []
         while len(synthetic_returns) < horizon:
             # Random block start
-            start = random.randint(0, len(historical_returns) - block_size)
-            block = historical_returns[start:start + block_size]
+            start = random.randint(0, len(normalized_returns) - block_size)
+            block = normalized_returns[start:start + block_size]
             synthetic_returns.extend(block)
         
         synthetic_returns = synthetic_returns[:horizon]
@@ -120,6 +135,9 @@ def regime_conditioned_bootstrap(
     
     if len(historical_returns) < block_size * 2:
         return []
+    
+    # Clip extreme returns
+    clipped_returns = [max(-0.20, min(0.20, r)) for r in historical_returns]
     
     # Classify regime for each day
     regimes = []

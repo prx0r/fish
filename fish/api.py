@@ -2579,3 +2579,141 @@ def strategy_uniqueness() -> dict[str, Any]:
         "uniqueness": result["uniqueness"],
         "summary": result["summary"],
     }
+
+
+# ── Sequence API (MPC/Stochastic Control) ─────────────────────────────────────
+
+@app.get("/api/sequence/{ticker}")
+def get_sequence(ticker: str) -> dict[str, Any]:
+    """Get optimal allocation sequence for a stock (MPC planner)."""
+    from fish.services.sequence.planner import MPCPlanner
+    from fish.services.backtest_game import HISTORICAL_PRICES
+    
+    ticker = ticker.upper()
+    prices = HISTORICAL_PRICES.get(ticker, [])
+    if not prices:
+        raise HTTPException(404, "No price data")
+    
+    # Get current weight from portfolio
+    from fish.db import SessionLocal
+    from sqlalchemy import text
+    current_weight = 0
+    with SessionLocal() as session:
+        result = session.execute(text(f"SELECT notes FROM watchlist WHERE ticker='{ticker}'"))
+        row = result.fetchone()
+        if row and row[0]:
+            import json
+            meta = json.loads(row[0]) if isinstance(row[0], str) else row[0]
+            current_weight = meta.get("value", 0) / 183826  # Total portfolio value
+    
+    planner = MPCPlanner(n_scenarios=500, horizon=252, method="regime")
+    result = planner.plan(prices, ticker, current_weight)
+    
+    return {
+        "ticker": result.ticker,
+        "as_of": result.as_of,
+        "current_weight": result.current_weight,
+        "optimal_weight": result.optimal_weight,
+        "confidence": result.confidence,
+        "sequence": result.sequence,
+        "distribution": result.distribution,
+        "metrics": {
+            "expected_return": result.policy.expected_return,
+            "expected_risk": result.policy.expected_risk,
+            "sharpe": result.policy.sharpe,
+            "cvar_5pct": result.policy.cvaR_5pct,
+            "turnover": result.policy.turnover,
+        },
+    }
+
+
+@app.post("/api/sequence/plan")
+def plan_sequence(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    """Plan optimal allocation sequence with custom parameters."""
+    from fish.services.sequence.planner import MPCPlanner
+    from fish.services.backtest_game import HISTORICAL_PRICES
+    
+    ticker = payload.get("ticker", "TSLA").upper()
+    current_weight = payload.get("current_weight", 0.10)
+    n_scenarios = payload.get("n_scenarios", 500)
+    horizon = payload.get("horizon", 252)
+    risk_aversion = payload.get("risk_aversion", 1.0)
+    
+    prices = HISTORICAL_PRICES.get(ticker, [])
+    if not prices:
+        raise HTTPException(404, "No price data")
+    
+    planner = MPCPlanner(
+        n_scenarios=n_scenarios,
+        horizon=horizon,
+        risk_aversion=risk_aversion,
+        method="regime",
+    )
+    result = planner.plan(prices, ticker, current_weight)
+    
+    return {
+        "ticker": result.ticker,
+        "as_of": result.as_of,
+        "current_weight": result.current_weight,
+        "optimal_weight": result.optimal_weight,
+        "confidence": result.confidence,
+        "sequence": result.sequence,
+        "distribution": result.distribution,
+        "scenario_stats": result.scenario_stats,
+        "metrics": {
+            "expected_return": result.policy.expected_return,
+            "expected_risk": result.policy.expected_risk,
+            "sharpe": result.policy.sharpe,
+            "cvar_5pct": result.policy.cvaR_5pct,
+            "turnover": result.policy.turnover,
+        },
+    }
+
+
+@app.get("/api/sequence/portfolio")
+def plan_portfolio_sequence() -> dict[str, Any]:
+    """Plan optimal allocation for entire portfolio."""
+    from fish.services.sequence.planner import MPCPlanner
+    from fish.services.backtest_game import HISTORICAL_PRICES
+    from fish.db import SessionLocal
+    from sqlalchemy import text
+    import json
+    
+    # Get all positions
+    positions = {}
+    total_value = 183826  # Chris Prior's total
+    
+    with SessionLocal() as session:
+        result = session.execute(text("SELECT ticker, notes FROM watchlist"))
+        rows = result.fetchall()
+        for row in rows:
+            ticker = row[0]
+            notes = row[1]
+            if notes:
+                meta = json.loads(notes) if isinstance(notes, str) else notes
+                value = meta.get("value", 0)
+                positions[ticker] = value / total_value
+    
+    planner = MPCPlanner(n_scenarios=200, horizon=252, method="regime")
+    results = planner.plan_all(HISTORICAL_PRICES, positions)
+    
+    portfolio_plan = {}
+    for ticker, result in results.items():
+        portfolio_plan[ticker] = {
+            "current_weight": result.current_weight,
+            "optimal_weight": result.optimal_weight,
+            "confidence": result.confidence,
+            "action": result.sequence[0]["action"] if result.sequence else "HOLD",
+            "expected_return": result.distribution.get("expected_return", 0),
+        }
+    
+    # Summary
+    total_optimal = sum(p["optimal_weight"] for p in portfolio_plan.values())
+    avg_confidence = sum(p["confidence"] for p in portfolio_plan.values()) / len(portfolio_plan) if portfolio_plan else 0
+    
+    return {
+        "positions": portfolio_plan,
+        "total_optimal_weight": total_optimal,
+        "average_confidence": avg_confidence,
+        "n_stocks": len(portfolio_plan),
+    }
