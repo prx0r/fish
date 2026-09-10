@@ -2312,3 +2312,270 @@ async def stock_sequence(ticker: str) -> dict[str, Any]:
         "support": support,
         "resistance": resistance,
     }
+
+
+# ── Experiment Ledger API ──────────────────────────────────────────────────────
+
+@app.get("/api/experiments")
+def list_experiments(
+    ticker: str = Query(None),
+    verdict: str = Query(None),
+    limit: int = Query(100),
+) -> list[dict[str, Any]]:
+    """List all experiments with optional filters."""
+    from fish.services.experiment_ledger import ExperimentLedger
+    ledger = ExperimentLedger(SessionLocal())
+    experiments = ledger.get_all_experiments(ticker=ticker, verdict=verdict, limit=limit)
+    return [
+        {
+            "experiment_id": e.experiment_id,
+            "parent_id": e.parent_id,
+            "created_at": e.created_at.isoformat() if e.created_at else None,
+            "hypothesis": e.hypothesis,
+            "ticker": e.ticker,
+            "strategy_name": e.strategy_name,
+            "parameters": e.parameters,
+            "features": e.features,
+            "sharpe": e.sharpe,
+            "dsr": e.dsr,
+            "pbo": e.pbo,
+            "verdict": e.verdict,
+            "score": e.score,
+            "reasons": e.reasons,
+            "tags": e.tags,
+        }
+        for e in experiments
+    ]
+
+
+@app.get("/api/experiments/stats")
+def experiment_stats() -> dict[str, Any]:
+    """Get aggregate experiment statistics."""
+    from fish.services.experiment_ledger import ExperimentLedger
+    ledger = ExperimentLedger(SessionLocal())
+    return ledger.get_statistics()
+
+
+@app.get("/api/experiments/{experiment_id}")
+def get_experiment(experiment_id: str) -> dict[str, Any]:
+    """Get experiment by ID."""
+    from fish.services.experiment_ledger import ExperimentLedger
+    ledger = ExperimentLedger(SessionLocal())
+    exp = ledger.get_experiment(experiment_id)
+    if not exp:
+        raise HTTPException(404, "Experiment not found")
+    return {
+        "experiment_id": exp.experiment_id,
+        "parent_id": exp.parent_id,
+        "created_at": exp.created_at.isoformat() if exp.created_at else None,
+        "hypothesis": exp.hypothesis,
+        "ticker": exp.ticker,
+        "strategy_name": exp.strategy_name,
+        "parameters": exp.parameters,
+        "features": exp.features,
+        "sharpe": exp.sharpe,
+        "sortino": exp.sortino,
+        "calmar": exp.calmar,
+        "max_drawdown": exp.max_drawdown,
+        "total_return": exp.total_return,
+        "win_rate": exp.win_rate,
+        "trades_count": exp.trades_count,
+        "turnover": exp.turnover,
+        "psr": exp.psr,
+        "dsr": exp.dsr,
+        "pbo": exp.pbo,
+        "bootstrap_ci_lower": exp.bootstrap_ci_lower,
+        "bootstrap_ci_upper": exp.bootstrap_ci_upper,
+        "permutation_p": exp.permutation_p,
+        "cost_sensitivity": exp.cost_sensitivity,
+        "regime_stability": exp.regime_stability,
+        "verdict": exp.verdict,
+        "score": exp.score,
+        "reasons": exp.reasons,
+        "notes": exp.notes,
+        "tags": exp.tags,
+    }
+
+
+@app.get("/api/experiments/{experiment_id}/lineage")
+def get_experiment_lineage(experiment_id: str) -> list[dict[str, Any]]:
+    """Get full lineage of an experiment (parent chain)."""
+    from fish.services.experiment_ledger import ExperimentLedger
+    ledger = ExperimentLedger(SessionLocal())
+    lineage = ledger.get_strategy_lineage(experiment_id)
+    return [
+        {
+            "experiment_id": e.experiment_id,
+            "parent_id": e.parent_id,
+            "strategy_name": e.strategy_name,
+            "verdict": e.verdict,
+            "score": e.score,
+        }
+        for e in lineage
+    ]
+
+
+@app.post("/api/experiments")
+def record_experiment(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    """Record a new experiment."""
+    from fish.services.experiment_ledger import ExperimentLedger
+    ledger = ExperimentLedger(SessionLocal())
+    exp = ledger.record_experiment(
+        hypothesis=payload.get("hypothesis", ""),
+        ticker=payload.get("ticker", ""),
+        strategy_name=payload.get("strategy_name", ""),
+        parameters=payload.get("parameters", {}),
+        features=payload.get("features", []),
+        parent_id=payload.get("parent_id"),
+        training_start=payload.get("training_start", ""),
+        training_end=payload.get("training_end", ""),
+        validation_start=payload.get("validation_start", ""),
+        validation_end=payload.get("validation_end", ""),
+        tags=payload.get("tags", []),
+        notes=payload.get("notes", ""),
+    )
+    return {"experiment_id": exp.experiment_id, "status": "recorded"}
+
+
+# ── Avatar Backtest API ────────────────────────────────────────────────────────
+
+@app.get("/api/avatar/strategies")
+def list_avatar_strategies() -> dict[str, Any]:
+    """List all available strategies by animal class."""
+    from fish.services.baselines import BASELINE_STRATEGIES
+    from fish.services.fox import FOX_STRATEGIES, FOX_META
+    from fish.services.shark import SHARK_STRATEGIES, SHARK_META
+    from fish.services.hedgehog import HEDGEHOG_STRATEGIES, HEDGEHOG_META
+    from fish.services.wolf import WOLF_STRATEGIES, WOLF_META
+    
+    return {
+        "baselines": {"count": len(BASELINE_STRATEGIES), "strategies": list(BASELINE_STRATEGIES.keys())},
+        "fox": {"count": len(FOX_STRATEGIES), "strategies": list(FOX_STRATEGIES.keys()), "meta": FOX_META},
+        "shark": {"count": len(SHARK_STRATEGIES), "strategies": list(SHARK_STRATEGIES.keys()), "meta": SHARK_META},
+        "hedgehog": {"count": len(HEDGEHOG_STRATEGIES), "strategies": list(HEDGEHOG_STRATEGIES.keys()), "meta": HEDGEHOG_META},
+        "wolf": {"count": len(WOLF_STRATEGIES), "strategies": list(WOLF_STRATEGIES.keys()), "meta": WOLF_META},
+        "total": len(BASELINE_STRATEGIES) + len(FOX_STRATEGIES) + len(SHARK_STRATEGIES) + len(HEDGEHOG_STRATEGIES) + len(WOLF_STRATEGIES),
+    }
+
+
+@app.post("/api/avatar/backtest")
+def run_avatar_backtest(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    """Run all avatars on a ticker and return Judge verdicts."""
+    from fish.services.baselines import BASELINE_STRATEGIES, _closes
+    from fish.services.fox import FOX_STRATEGIES
+    from fish.services.shark import SHARK_STRATEGIES
+    from fish.services.hedgehog import HEDGEHOG_STRATEGIES
+    from fish.services.wolf import WOLF_STRATEGIES
+    from fish.services.judge import judge_strategy
+    from fish.services.backtest_game import HISTORICAL_PRICES
+    
+    ticker = payload.get("ticker", "MPAL").upper()
+    prices = HISTORICAL_PRICES.get(ticker, [])
+    if not prices:
+        raise HTTPException(404, "No price data")
+    
+    ALL_STRATEGIES = {
+        **BASELINE_STRATEGIES,
+        **FOX_STRATEGIES,
+        **SHARK_STRATEGIES,
+        **HEDGEHOG_STRATEGIES,
+        **WOLF_STRATEGIES,
+    }
+    
+    closes = _closes(prices)
+    verdicts = []
+    
+    for name, fn in ALL_STRATEGIES.items():
+        try:
+            result = fn(prices)
+            verdict = judge_strategy(
+                name=name,
+                ticker=ticker,
+                trades=result.trades,
+                closes=closes,
+                n_trials=len(ALL_STRATEGIES),
+            )
+            verdicts.append({
+                "strategy": name,
+                "verdict": verdict.verdict,
+                "score": verdict.score,
+                "sharpe": verdict.sharpe,
+                "dsr": verdict.dsr,
+                "pbo": verdict.pbo,
+                "return": result.total_return * 100,
+                "trades": result.trades_count,
+                "max_dd": verdict.max_drawdown * 100,
+                "reasons": verdict.reasons,
+            })
+        except Exception:
+            pass
+    
+    verdicts.sort(key=lambda v: v["score"], reverse=True)
+    
+    return {
+        "ticker": ticker,
+        "strategies_tested": len(verdicts),
+        "passed": sum(1 for v in verdicts if v["verdict"] == "PASS"),
+        "warned": sum(1 for v in verdicts if v["verdict"] == "WARN"),
+        "failed": sum(1 for v in verdicts if v["verdict"] == "FAIL"),
+        "verdicts": verdicts,
+    }
+
+
+@app.post("/api/avatar/walk-forward")
+def run_walk_forward(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    """Run walk-forward validation on a strategy."""
+    from fish.services.walk_forward import walk_forward_validate
+    from fish.services.backtest_game import HISTORICAL_PRICES
+    from fish.services.baselines import BASELINE_STRATEGIES
+    from fish.services.fox import FOX_STRATEGIES
+    from fish.services.shark import SHARK_STRATEGIES
+    from fish.services.hedgehog import HEDGEHOG_STRATEGIES
+    from fish.services.wolf import WOLF_STRATEGIES
+    
+    ticker = payload.get("ticker", "MPAL").upper()
+    strategy_name = payload.get("strategy", "buyhold")
+    
+    prices = HISTORICAL_PRICES.get(ticker, [])
+    if not prices:
+        raise HTTPException(404, "No price data")
+    
+    ALL_STRATEGIES = {
+        **BASELINE_STRATEGIES,
+        **FOX_STRATEGIES,
+        **SHARK_STRATEGIES,
+        **HEDGEHOG_STRATEGIES,
+        **WOLF_STRATEGIES,
+    }
+    
+    strategy_fn = ALL_STRATEGIES.get(strategy_name)
+    if not strategy_fn:
+        raise HTTPException(404, f"Strategy {strategy_name} not found")
+    
+    wf = walk_forward_validate(prices, strategy_fn, ticker)
+    
+    return {
+        "ticker": ticker,
+        "strategy": strategy_name,
+        "verdict": wf.verdict,
+        "walk_forward_sharpe": wf.walk_forward_sharpe,
+        "avg_in_sharpe": wf.avg_in_sharpe,
+        "avg_out_sharpe": wf.avg_out_sharpe,
+        "sharpe_decay": wf.sharpe_decay,
+        "pct_windows_profitable": wf.pct_windows_profitable,
+        "windows": len(wf.windows),
+    }
+
+
+@app.get("/api/avatar/uniqueness")
+def strategy_uniqueness() -> dict[str, Any]:
+    """Measure strategy uniqueness across all tickers."""
+    from fish.services.ensemble import run_full_backtest
+    from fish.services.backtest_game import HISTORICAL_PRICES
+    
+    result = run_full_backtest(HISTORICAL_PRICES)
+    
+    return {
+        "uniqueness": result["uniqueness"],
+        "summary": result["summary"],
+    }
