@@ -156,11 +156,25 @@ def regime_conditioned_bootstrap(
     
     # Group returns by regime
     regime_returns = {"bull": [], "bear": [], "neutral": []}
-    for r, reg in zip(historical_returns, regimes):
+    for r, reg in zip(clipped_returns, regimes):
         regime_returns[reg].append(r)
     
     # Determine current regime
     current_regime = regimes[-1] if regimes else "neutral"
+    
+    # Normalize returns to have realistic statistics
+    recent_returns = clipped_returns[-252:] if len(clipped_returns) > 252 else clipped_returns
+    mean_ret = sum(recent_returns) / len(recent_returns)
+    std_ret = math.sqrt(sum((r - mean_ret)**2 for r in recent_returns) / len(recent_returns))
+    
+    # Scale to realistic daily returns (mean ~0, std ~0.02)
+    if std_ret > 0:
+        normalized_regime_returns = {
+            reg: [(r - mean_ret) / std_ret * 0.02 for r in rets]
+            for reg, rets in regime_returns.items()
+        }
+    else:
+        normalized_regime_returns = regime_returns
     
     scenarios = []
     for _ in range(n_scenarios):
@@ -169,10 +183,10 @@ def regime_conditioned_bootstrap(
         
         while len(synthetic_returns) < horizon:
             # Get returns for current regime
-            available = regime_returns.get(current_reg, historical_returns)
+            available = normalized_regime_returns.get(current_reg, normalized_regime_returns.get("neutral", []))
             
             if len(available) < block_size:
-                available = historical_returns
+                available = list(normalized_regime_returns.values())[0] if normalized_regime_returns else [0]
             
             # Random block
             start = random.randint(0, len(available) - block_size)
