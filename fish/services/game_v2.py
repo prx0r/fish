@@ -298,8 +298,11 @@ def get_episode_state(episode_id: str) -> dict | None:
 
     step = ep.steps[ep.current_step]
 
-    # Build visible chart (only up to current step)
-    chart = [{'date': s.asof, 'price': s.price} for s in ep.steps[:ep.current_step + 1]]
+    # Build visible chart — signal_only mode shows no chart
+    if ep.mode == 'signal_only':
+        chart = []
+    else:
+        chart = [{'date': s.asof, 'price': s.price} for s in ep.steps[:ep.current_step + 1]]
 
     # Fish forecast (frozen)
     f = step.fish_forecast
