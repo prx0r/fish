@@ -1728,9 +1728,18 @@ def backtest_positions() -> dict[str, Any]:
 
 
 @app.get("/api/backtest/prices/{ticker}")
-def backtest_prices(ticker: str) -> list[dict[str, Any]]:
-    """Get historical prices for a ticker."""
-    from fish.services.backtest_game import HISTORICAL_PRICES
+async def backtest_prices(ticker: str) -> list[dict[str, Any]]:
+    from fish.services.backtest_game import HISTORICAL_PRICES, fetch_real_prices
+    try:
+        real = await fetch_real_prices(ticker)
+        if real:
+            return real
+    except:
+        pass
+    return HISTORIAL_PRICES.get(ticker, [])
+    """Get historical prices — real Yahoo Finance data when available."""
+    from fish.services.backtest_game import HISTORICAL_PRICES, fetch_real_prices
+    
     return HISTORICAL_PRICES.get(ticker, [])
 
 
