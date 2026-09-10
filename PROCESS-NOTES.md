@@ -142,8 +142,35 @@ The risk is that we keep building infrastructure (more avatars, more data, more 
 ## Commits
 
 ```
+ddc2868  Fix 3 game bugs found in testing
+f830d35  Process notes: grounded assessment of current state and next steps
 78ddc0f  Backtest page wired to Game V2 API
 4254c9d  Cross-repo review (fleece + bitt patterns)
 c3fe13a  Game V2 kernel (point-in-time, locked forecasts)
 125ba28  Ensemble backtest + equity curve fix
 ```
+
+---
+
+## Integration Test Results (10 games)
+
+| # | Ticker | Mode | Steps | Player | Fish | B&H | Edge |
+|---|--------|------|-------|--------|------|-----|------|
+| 1 | TSLA | blind | 15 | +0.3% | +2.7% | +2.7% | -2.4% |
+| 2 | COHR | context | 20 | +0.1% | +20.3% | +20.3% | -20.1% |
+| 3 | META | signal_only | 10 | -1.2% | +0.0% | -6.4% | -1.2% |
+| 4 | NBIS | blind | 20 | -2.4% | +6.3% | -13.2% | -8.7% |
+| 5 | IRWD | context | 20 | +69.6% | +95.3% | +95.3% | -25.6% |
+| 6 | PGEN | signal_only | 10 | +7.5% | -34.7% | +37.7% | +42.2% |
+| 7 | COLL | blind | 20 | -2.0% | +0.0% | -9.7% | -2.0% |
+| 8 | DHX | context | 15 | +13.2% | +4.0% | +50.2% | +9.2% |
+| 9 | TSLA | signal_only | 15 | -13.6% | +24.5% | -24.0% | -38.1% |
+| 10 | COHR | blind | 20 | -1.1% | -12.3% | -7.6% | +11.2% |
+
+**Player beat Fish: 3/10 (30%)**
+**Average residual edge: -3.6%**
+
+### Bugs Fixed
+1. Signal-only mode was showing chart data → now hidden ✅
+2. Double-lock was not prevented → now returns 400 ✅
+3. Advance without lock was not prevented → now returns 400 ✅
