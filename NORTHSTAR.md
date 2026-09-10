@@ -1,137 +1,75 @@
-# Fish Northstar: AI Trading Backtester
+# Fish Northstar: AI Strategy Arena
 
-**Vision**: A mobile-first backtesting app where you can:
-1. See your portfolio with TradingView charts
-2. Run simulations at 1-day, 1-week, or 1-month intervals
-3. Watch AI make trades vs your decisions
-4. Benchmark against buy-and-hold
-5. Prompt the AI with strategy ideas → it converts to algorithms
-6. Paper trade live from your portfolio
+**Vision**: Gamified backtesting where each strategy is an avatar/animal with a temperament. Users compete against AI models and their own past decisions.
 
 ---
 
-## Core Loop
+## Strategy Avatars
 
-```
-SELECT TICKER → SELECT INTERVAL → RUN SIMULATION
-        │                │                │
-        ▼                ▼                ▼
-  Chart loads      AI + Human      Results show
-  with history     make trades     buy/sell markers
-  + buy/sell       at each step    + P&L comparison
-  markers                             + benchmark
-```
-
----
-
-## TradingView Integration
-
-Use Lightweight Charts (Apache 2.0, 35KB):
-```html
-<script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
-```
-
-Features needed:
-- Candlestick chart with historical data
-- Volume bars
-- Buy/sell markers (like Hyperliquid)
-- Support/resistance lines
-- Moving averages (20, 50, 200 day)
+| Avatar | Name | Temperament | Strategy |
+|--------|------|-------------|----------|
+| 🐻 | **Bear** | Conservative | Sell on weakness, buy on deep dips |
+| 🐂 | **Bull** | Aggressive | Buy momentum, ride trends |
+| 🦅 | **Eagle** | Selective | High-conviction, low-frequency |
+| 🐍 | **Snake** | Contrarian | Mean reversion, fade the crowd |
+| 🐺 | **Wolf** | Pack hunter | Confluence of signals |
+| 🐝 | **Bee** | Industrious | Small consistent gains |
+| 🦈 | **Shark** | Opportunistic | Strike when blood in water |
+| 🦉 | **Owl** | Wisdom | Long-term value, ignore noise |
+| 🐆 | **Cheetah** | Fast | Quick entries, quick exits |
+| 🐢 | **Turtle** | Patient | Buy and hold forever |
 
 ---
 
-## Backtesting Engine
-
-### Input
-- Portfolio positions (ticker, qty, entry price)
-- Start date (Jan 1, 2026)
-- End date (Sep 10, 2026)
-- Interval: 1D, 1W, or 1M
-- Strategy: Buy-and-hold, AI, or custom
-
-### Process
-```
-FOR EACH INTERVAL:
-  1. AI analyzes chart + signals
-  2. AI proposes trade (BUY/SELL/HOLD)
-  3. Human decides (accept/reject/modify)
-  4. Execute trade
-  5. Record P&L
-  6. Move to next interval
-```
-
-### Output
-- Chart with buy/sell markers
-- P&L curve
-- Win rate
-- Sharpe ratio
-- Max drawdown
-- Comparison: AI vs Human vs Buy-and-Hold
-
----
-
-## AI Strategy Builder
+## Backtest Game Flow
 
 ```
-USER: "Buy when RSI < 30 and MACD crosses up"
-        │
-        ▼
-AI: converts to algorithm:
-  if rsi < 30 and macd_cross_up:
-      BUY
-  elif rsi > 70 and macd_cross_down:
-      SELL
-  else:
-      HOLD
-        │
-        ▼
-BACKTEST: run against historical data
-        │
-        ▼
-RESULT: win rate, Sharpe, max drawdown
+SELECT AVATAR (strategy)
+    │
+    ▼
+SELECT TICKER (Chris's basket)
+    │
+    ▼
+SELECT INTERVAL (1D / 1W / 1M)
+    │
+    ▼
+SELECT PERIOD (Jan 2026 → Sep 2026)
+    │
+    ▼
+SIMULATE
+    │
+    ├── Avatar makes trades at each step
+    ├── Human makes trades (or does nothing)
+    ├── Buy & Hold runs as benchmark
+    │
+    ▼
+RESULTS
+    ├── Chart with buy/sell markers
+    ├── P&L comparison
+    ├── Win rate, Sharpe, max drawdown
+    ├── Leaderboard ranking
+    └── Regime analysis (bull/bear/range)
 ```
 
 ---
 
-## Paper Trading (Live)
+## Regime Analysis
 
-```
-PORTFOLIO (19 positions)
-        │
-        ▼
-AI MONITORS (real-time signals)
-        │
-        ▼
-AI SUGGESTS (trade proposal)
-        │
-        ▼
-HUMAN DECIDES (accept/reject)
-        │
-        ▼
-RECORDED (paper trade log)
-        │
-        ▼
-PERFORMANCE (AI vs Human tracking)
-```
+| Regime | Definition | Best Avatar |
+|--------|-----------|-------------|
+| Bull | >10% rise in 3 months | 🐂 Bull, 🐆 Cheetah |
+| Bear | >10% fall in 3 months | 🐻 Bear, 🐍 Snake |
+| Range | -10% to +10% | 🦅 Eagle, 🦉 Owl |
+| High Vol | >20% swing | 🐺 Wolf, 🦈 Shark |
+| Low Vol | <5% swing | 🐝 Bee, 🐢 Turtle |
 
 ---
 
-## Technical Architecture
+## Scoring
 
-### Backend (Python)
-- `backtest_engine.py` — Core backtesting logic
-- `strategy_compiler.py` — Convert prompts to algorithms
-- `price_fetcher.py` — Historical + real-time prices
-- `portfolio_manager.py` — Position tracking
+```
+Avatar Score = (Return × Sharpe × Win Rate) / (Max Drawdown × Volatility)
 
-### Frontend (JavaScript)
-- TradingView Lightweight Charts
-- Buy/sell markers
-- Interactive controls (interval selector, strategy selector)
-- Performance dashboard
-
-### Data
-- Historical prices (Yahoo Finance, Stooq)
-- Technical indicators (RSI, MACD, MA)
-- Portfolio snapshots (daily)
-- Trade log (AI + Human)
+Normalized to 0-100 scale.
+Leaderboard: Best score across all avatars for a given ticker.
+```
