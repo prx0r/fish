@@ -88,6 +88,12 @@
       <div class="hero-card">
         <pre id="briefContent" style="font-size:11px;line-height:1.5;white-space:pre-wrap;color:var(--soft)"></pre>
       </div>
+
+      <div class="section-head"><h2>Backtest: Jan→Sep 2026</h2></div>
+      <div class="hero-card">
+        <button class="btn" onclick="runBacktest()">Run Simulation</button>
+        <div id="backtest-results" style="margin-top:12px"></div>
+      </div>
     </main>
   </div>
 
@@ -135,6 +141,36 @@
 
     // Load on page
     refreshData();
+
+    // Backtest game
+    async function runBacktest() {
+      const div = document.getElementById('backtest-results');
+      div.innerHTML = '<p style="color:var(--accent);font-size:12px">Running simulation...</p>';
+      
+      const data = await api('/api/backtest/simulate', {method:'POST', body:'{}'});
+      
+      const ret = data.total_return;
+      const cls = ret >= 0 ? 'positive' : 'negative';
+      
+      // Build chart as ASCII
+      let chart = '```\n';
+      chart += '£' + ' '.repeat(40) + '£527k\n';
+      data.timeline.forEach(t => {
+        const bar = '█'.repeat(Math.round(t.portfolio_value / 10000));
+        chart += `${t.date.slice(5)} ${bar} £${(t.portfolio_value/1000).toFixed(0)}k\n`;
+      });
+      chart += '```\n';
+      
+      div.innerHTML = `
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">
+          <div class="metric-box"><div class="metric-val">£${data.initial_value.toLocaleString()}</div><div class="metric-lbl">Jan 2026</div></div>
+          <div class="metric-box"><div class="metric-val">£${data.final_value.toLocaleString()}</div><div class="metric-lbl">Sep 2026</div></div>
+          <div class="metric-box"><div class="metric-val ${cls}">${ret>=0?'+':''}${ret.toFixed(1)}%</div><div class="metric-lbl">Return</div></div>
+        </div>
+        <pre style="font-size:10px;line-height:1.4;color:var(--soft);background:var(--panel);padding:12px;border-radius:6px">${chart}</pre>
+        <p style="color:var(--muted);font-size:10px;margin-top:8px">Simulated returns based on historical monthly prices. Not investment advice.</p>
+      `;
+    }
   </script>
 </body>
 </html>
