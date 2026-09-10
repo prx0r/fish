@@ -1,75 +1,79 @@
-# Fish Northstar: AI Strategy Arena
+# Northstar: AI Trading Sequence Engine
 
-**Vision**: Gamified backtesting where each strategy is an avatar/animal with a temperament. Users compete against AI models and their own past decisions.
+## Core Concept
 
----
+The AI maintains a **sequence of buy/sell recommendations** for each stock. At each price update, it increases or decreases confidence based on:
+1. Technical signals (price action, levels, momentum)
+2. Backtested historical performance
+3. Fundamental analysis (earnings, news, macro)
+4. Current regime (bull/bear/range)
 
-## Strategy Avatars
-
-| Avatar | Name | Temperament | Strategy |
-|--------|------|-------------|----------|
-| 🐻 | **Bear** | Conservative | Sell on weakness, buy on deep dips |
-| 🐂 | **Bull** | Aggressive | Buy momentum, ride trends |
-| 🦅 | **Eagle** | Selective | High-conviction, low-frequency |
-| 🐍 | **Snake** | Contrarian | Mean reversion, fade the crowd |
-| 🐺 | **Wolf** | Pack hunter | Confluence of signals |
-| 🐝 | **Bee** | Industrious | Small consistent gains |
-| 🦈 | **Shark** | Opportunistic | Strike when blood in water |
-| 🦉 | **Owl** | Wisdom | Long-term value, ignore noise |
-| 🐆 | **Cheetah** | Fast | Quick entries, quick exits |
-| 🐢 | **Turtle** | Patient | Buy and hold forever |
+**Output**: "SELL 50% here" or "BUY back at X" — with a confidence multiplier (0-1) that determines position sizing.
 
 ---
 
-## Backtest Game Flow
+## The Sequence Logic
 
 ```
-SELECT AVATAR (strategy)
-    │
-    ▼
-SELECT TICKER (Chris's basket)
-    │
-    ▼
-SELECT INTERVAL (1D / 1W / 1M)
-    │
-    ▼
-SELECT PERIOD (Jan 2026 → Sep 2026)
-    │
-    ▼
-SIMULATE
-    │
-    ├── Avatar makes trades at each step
-    ├── Human makes trades (or does nothing)
-    ├── Buy & Hold runs as benchmark
-    │
-    ▼
-RESULTS
-    ├── Chart with buy/sell markers
-    ├── P&L comparison
-    ├── Win rate, Sharpe, max drawdown
-    ├── Leaderboard ranking
-    └── Regime analysis (bull/bear/range)
+PRICE UPDATE → AI ANALYZES → CONFIDENCE CHANGES → POSITION SIZES ADJUST
+
+Example sequence for MPAL:
+  Step 1: BUY 100% at 3.70 (confidence: 0.9)
+  Step 2: HOLD (confidence: 0.8)
+  Step 3: SELL 50% at 7.00 (confidence: 0.7) ← dad sold here
+  Step 4: HOLD remaining 50% (confidence: 0.6)
+  Step 5: BUY back 30% at 5.50 (confidence: 0.5) ← if support holds
+  Step 6: SELL 100% at 8.00 (confidence: 0.4) ← if target hit
 ```
 
 ---
 
-## Regime Analysis
+## Confidence Multiplier
 
-| Regime | Definition | Best Avatar |
-|--------|-----------|-------------|
-| Bull | >10% rise in 3 months | 🐂 Bull, 🐆 Cheetah |
-| Bear | >10% fall in 3 months | 🐻 Bear, 🐍 Snake |
-| Range | -10% to +10% | 🦅 Eagle, 🦉 Owl |
-| High Vol | >20% swing | 🐺 Wolf, 🦈 Shark |
-| Low Vol | <5% swing | 🐝 Bee, 🐢 Turtle |
+```
+Position Size = Base Size × Confidence Multiplier
+
+Confidence 0.9-1.0 → Multiplier 1.0 → Full position
+Confidence 0.7-0.9 → Multiplier 0.7 → 70% position
+Confidence 0.5-0.7 → Multiplier 0.5 → 50% position
+Confidence 0.3-0.5 → Multiplier 0.3 → 30% position
+Confidence <0.3   → Multiplier 0.0 → No trade
+```
 
 ---
 
-## Scoring
+## How Confidence Updates
 
-```
-Avatar Score = (Return × Sharpe × Win Rate) / (Max Drawdown × Volatility)
+At each price tick:
 
-Normalized to 0-100 scale.
-Leaderboard: Best score across all avatars for a given ticker.
+```text
+IF price near support AND momentum positive:
+    confidence += 0.05 (up to max 1.0)
+    
+IF price near resistance AND momentum negative:
+    confidence -= 0.05 (down to min 0.0)
+    
+IF regime matches strategy:
+    confidence += 0.1
+    
+IF macro favorable:
+    confidence += 0.05
+    
+IF fundamentals strong:
+    confidence += 0.05
 ```
+
+---
+
+## Backtest Validation
+
+For each historical period:
+1. Run the sequence engine
+2. Record all buy/sell recommendations with confidence
+3. Check: did the AI make money?
+4. Calculate: what % of recommendations were correct?
+5. Use this to calibrate confidence multipliers
+
+**Key metric**: Average confidence of correct trades vs incorrect trades.
+
+If correct trades have avg confidence 0.7 and incorrect have 0.4, the system is working.

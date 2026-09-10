@@ -2267,3 +2267,48 @@ async def backtest_all_strategies(payload: dict[str, Any] = Body(...)) -> dict[s
         "benchmark": {"name": "Buy & Hold", "return": round(bh_return, 2)},
         "strategies": results,
     }
+
+
+# ── Trading Sequence Engine ─────────────────────────────────────────────────
+
+@app.get("/api/stocks/{ticker}/sequence")
+async def stock_sequence(ticker: str) -> dict[str, Any]:
+    """Get AI trading sequence for a stock."""
+    from fish.services.sequence_engine import generate_sequence, confidence_to_multiplier
+    from fish.services.backtest_game import HISTORICAL_PRICES
+    
+    ticker = ticker.upper()
+    prices = HISTORICAL_PRICES.get(ticker, [])
+    if not prices:
+        raise HTTPException(404, "No price data")
+    
+    # Calculate support/resistance
+    closes = [p.get("close", p.get("price", 0)) for p in prices]
+    support = min(closes[-50:]) if len(closes) >= 50 else min(closes)
+    resistance = max(closes[-50:]) if len(closes) >= 50 else max(closes)
+    
+    # Generate sequence
+    sequence = generate_sequence(
+        ticker=ticker,
+        prices=prices,
+        support=support,
+        resistance=resistance,
+        regime="RANGE",
+    )
+    
+    # Find current recommendation
+    current = sequence.steps[-1] if sequence.steps else None
+    
+    return {
+        "ticker": ticker,
+        "current_step": {
+            "action": current.action if current else "HOLD",
+            "price": current.price if current else 0,
+            "confidence": current.confidence if current else 0,
+            "multiplier": confidence_to_multiplier(current.confidence) if current else 0,
+            "position_pct": round(confidence_to_multiplier(current.confidence) * 100, 1) if current else 0,
+        } if current else None,
+        "sequence_length": len(sequence.steps),
+        "support": support,
+        "resistance": resistance,
+    }
