@@ -2159,3 +2159,33 @@ def portfolio_health(user_id: str = Query("chris")) -> dict[str, Any]:
             "diversification": round(diversification * 100, 1),
             "grade": "A" if health >= 80 else "B" if health >= 60 else "C" if health >= 40 else "D",
         }
+
+
+# ── Rebalancing Engine ───────────────────────────────────────────────────────
+
+@app.get("/api/rebalance")
+def rebalance_suggestions(user_id: str = Query("chris")) -> dict[str, Any]:
+    """Get rebalancing suggestions for the portfolio."""
+    from fish.services.rebalancing import suggest_rebalance, get_current_allocation, TARGET_ALLOCATION
+    
+    with SessionLocal() as session:
+        stocks = session.scalars(select(Watchlist)).all()
+        positions = []
+        for stock in stocks:
+            notes = json.loads(stock.notes or "{}")
+            positions.append({
+                "ticker": stock.ticker,
+                "sector": stock.sector,
+                "value": notes.get("value", 0),
+                "pct": notes.get("pct", 0),
+            })
+        
+        current = get_current_allocation(positions)
+        suggestions = suggest_rebalance(positions, TARGET_ALLOCATION)
+        
+        return {
+            "current_allocation": current,
+            "target_allocation": TARGET_ALLOCATION,
+            "suggestions": suggestions,
+            "drift_threshold": 5.0,
+        }
