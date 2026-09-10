@@ -1,150 +1,69 @@
-# Feedify 2.0
+# Fish — Personal Portfolio Intelligence for Chris Prior
 
-**Knowledge graph compiler for post-AGI scarcity intelligence.**
+**Codename**: Fish
+**Repo**: github.com/prx0r/fish
+**Based on**: Feedify 2.0 knowledge graph
 
-Feedify ingests X/Twitter posts from researchers and engineers, classifies them into typed knowledge objects, builds relationships between objects, and tracks predictions over time. The core thesis: "What does increasing abundance make newly scarce?"
+---
 
-```
-cd /root/feedify2
-source .venv/bin/activate
-uvicorn feedify.api:app --reload --port 8788
+## What This Is
 
-# Quick test
-curl http://localhost:8788/api/health
-curl http://localhost:8788/api/convergence?days=30
-curl http://localhost:8788/api/predictions?limit=5
-```
+Fish is Chris Prior's personal stock portfolio intelligence system. It:
+1. Watches his 19 positions
+2. Generates daily briefs (bitesized, actionable)
+3. Lets him chat with an AI that reasons over the knowledge graph
+4. Tracks paper trades (AI vs Human performance)
+5. Discovers other traders who discuss his tickers
 
-## What's inside
+**The graph is the source of truth. The LLM is the reasoning engine.**
 
-| Module | Role |
-|---|---|
-| `feedify/adapters/` | 9 source adapters (X, GitHub, HN, SEC, OpenInsider, TrustMRR, StoreLeads, Appfigures, Glama) |
-| `feedify/services/` | Core logic (25 files) — classification, scoring, convergence, graph building |
-| `feedify/api.py` | FastAPI server (55+ routes) |
-| `feedify/models.py` | 7 tables: artifacts, objects, edges, feeds, interactions, feed_versions, channels |
-| `feedify/schemas.py` | Pydantic schemas for API |
-| `august/` | Extracted tweet data (101 accounts, 3,357 tweets) |
-| `specs/` | Analysis docs, thesis, account registry |
-| `tests/` | 41 tests, all passing |
+---
 
-## Documentation
+## Portfolio
 
-- [`AGENTS.md`](AGENTS.md) — binding rules for coding agents
-- [`HANDOVER.md`](HANDOVER.md) — full project state
-- [`NEXT_STEPS.md`](NEXT_STEPS.md) — what's done and what's next
-- [`QUICKSTART.md`](QUICKSTART.md) — fresh agent entry point
-- [`docs/RECIPES.md`](docs/RECIPES.md) — common tasks and patterns
-- [`docs/MCP.md`](docs/MCP.md) — future MCP server design
-- [`specs/canonical-thesis-v2.md`](specs/canonical-thesis-v2.md) — the master equation
-- [`specs/aithesis_people.md`](specs/aithesis_people.md) — 100-account research graph
+| Account | Positions | Value |
+|---------|-----------|-------|
+| Dealing | 14 | £163,933 |
+| ISA | 5 | £26,383 |
+| **Total** | **19** | **£183,826** |
 
-## One-click bring-up
+**Unrealised P/L**: +£13,082 (+7.66%)
+
+---
+
+## How to Run
 
 ```bash
-git clone <this repo> && cd feedify2
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
-pytest tests/ -q                       # 41 tests pass
-uvicorn feedify.api:app --reload --port 8788
+cd /root/fish
+source .venv/bin/activate
+uvicorn fish.api:app --reload --port 8789
+
+# Daily brief
+curl http://localhost:8789/api/portfolio/brief
+
+# AI chat
+curl -X POST http://localhost:8789/api/portfolio/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message":"What should I do with MPAL?"}'
+
+# Paper trade
+curl -X POST http://localhost:8789/api/trading/suggest \
+  -H "Content-Type: application/json" \
+  -d '{"ticker":"COHR"}'
 ```
 
-## Architecture
+---
+
+## Relationship to Feedify
 
 ```
-                    X/Twitter Posts
-                         │
-                         ▼
-              ┌─────────────────────┐
-              │   ADAPTERS (9)      │
-              │   X, GitHub, HN...  │
-              └─────────────────────┘
-                         │
-                         ▼
-              ┌─────────────────────┐
-              │   ARTIFACTS         │
-              │   (immutable inputs)│
-              └─────────────────────┘
-                         │
-                         ▼
-              ┌─────────────────────┐
-              │   SEMANTIC COMPILER │
-              │   classify + extract│
-              └─────────────────────┘
-                         │
-                         ▼
-              ┌─────────────────────┐
-              │   OBJECTS           │
-              │   (typed knowledge) │
-              │   theory|problem|   │
-              │   prediction|...    │
-              └─────────────────────┘
-                         │
-                         ▼
-              ┌─────────────────────┐
-              │   EDGES             │
-              │   (relationships)   │
-              │   supports|contradicts│
-              │   temporal|converges│
-              └─────────────────────┘
-                         │
-                         ▼
-              ┌─────────────────────┐
-              │   DELTA FEEDS       │
-              │   (what changed)    │
-              └─────────────────────┘
+Feedify (knowledge graph)     Fish (portfolio intelligence)
+┌─────────────────────┐      ┌─────────────────────────┐
+│ X posts → Objects   │      │ Portfolio → Briefs      │
+│ Convergence         │◄────▶│ AI Chat                 │
+│ Scarcity engine     │GRAPH │ Paper Trading           │
+│ Prediction tracking │      │ Daily Reports           │
+└─────────────────────┘      └─────────────────────────┘
 ```
 
-## DB State
-
-```
-Artifacts: 3,357 (raw tweets)
-Objects: 7,120 (typed knowledge)
-Edges: 5,685 (relationships)
-Companies: 18 (AI→Atoms interface layer)
-Short candidates: 5 (technical half-life mismatch)
-Contradictions: 3 (world-state inconsistency)
-```
-
-## API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/health` | GET | System health |
-| `/api/objects` | GET | List objects (filters: domain, kind) |
-| `/api/objects/{id}` | GET | Object detail with edges |
-| `/api/graph` | GET | Knowledge graph context |
-| `/api/graph/stats` | GET | Graph statistics |
-| `/api/convergence` | GET | Multi-author convergence detection |
-| `/api/predictions` | GET | Predictions with connected evidence |
-| `/api/interactions` | POST | Record user actions |
-| `/api/feeds/{slug}/compiled` | GET | Multi-stage compiled feed |
-| `/api/feeds/{slug}/delta` | GET | Delta feed |
-| `/api/import/chatgpt` | POST | Import conversations |
-| `/api/ingest` | POST | Trigger ingestion |
-
-## Core thesis
-
-> **What does increasing abundance make newly scarce?**
-
-AGI makes cognition abundant → verification becomes scarce → verification gets automated → physical experiments become scarce → instruments become scarce → manufacturing scales → energy/permissions become scarce.
-
-The master equation:
-
-$$
-Alpha_i = (P_{ours} - P_{market}) \times \Delta CF_i \times X_i \times B_i \times R_i - C_i
-$$
-
-See [`specs/canonical-thesis-v2.md`](specs/canonical-thesis-v2.md) for the full derivation.
-
-## Cost
-
-| Item | Cost |
-|------|------|
-| GetXAPI (3,357 tweets) | ~$0.17 |
-| LLM (Muse Spark 1.3 contributor) | ~$0.01 per 1K tokens |
-| **Total** | **~$0.18** |
-
-## License
-
-Proprietary. Do not distribute.
+Feedify provides the intelligence. Fish provides the decisions.
