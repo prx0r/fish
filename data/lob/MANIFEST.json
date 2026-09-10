@@ -1,0 +1,44 @@
+{
+  "description": "LOB data architecture for Fish microstructure research",
+  "created": "2026-09-10",
+  "data_sources": {
+    "xlom_delayed": {
+      "url": "https://dmd.lseg.com/dmd/LSEPre-TradeDocuments",
+      "type": "L1_BBO",
+      "delay": "15min",
+      "cost": "free",
+      "status": "ready_to_record"
+    },
+    "cboe_pitch": {
+      "type": "L2_full_depth",
+      "cost": "sample_free_then_paid",
+      "status": "sample_downloaded"
+    },
+    "bmll_l3": {
+      "type": "L3_MBO",
+      "cost": "trial_available",
+      "status": "sample_downloaded"
+    },
+    "lse_gsk_2007": {
+      "type": "L3_lifecycle",
+      "cost": "free",
+      "status": "downloaded_274K_events"
+    },
+    "ibkr_l2": {
+      "type": "L2_realtime",
+      "cost": "7GBP_monthly",
+      "status": "needs_credentials"
+    }
+  },
+  "research_modules": {
+    "tier_a": ["Microprice", "OFI", "MLOFI", "VPIN", "DepthShape", "DeepLOB", "LOB_Transformer"],
+    "tier_b": ["Optimal_Execution_RL"],
+    "tier_c": ["MBO_DeepLOB", "Adaptive_Market_Making", "LOB_RL"]
+  },
+  "directory_structure": {
+    "raw/": "Unprocessed exchange data, organized by venue/ticker/date",
+    "processed/": "Cleaned canonical LOB events",
+    "models/": "Trained model weights",
+    "results/": "Backtest results and tournament scores"
+  }
+}
