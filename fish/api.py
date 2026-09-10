@@ -1736,7 +1736,7 @@ async def backtest_prices(ticker: str) -> list[dict[str, Any]]:
             return real
     except:
         pass
-    return HISTORIAL_PRICES.get(ticker, [])
+    return HISTORICAL_PRICES.get(ticker, [])
     """Get historical prices — real Yahoo Finance data when available."""
     from fish.services.backtest_game import HISTORICAL_PRICES, fetch_real_prices
     
@@ -2021,3 +2021,141 @@ def earnings_calendar() -> list[dict[str, Any]]:
         {"ticker": k, "next": v["next"], "type": v["type"]}
         for k, v in sorted(EARNINGS_DATES.items(), key=lambda x: x[1]["next"])
     ]
+
+
+# ── A45: Strategy backtester ─────────────────────────────────────────────────
+
+@app.post("/api/backtest/strategy")
+async def strategy_backtest(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    """Backtest a custom strategy prompt against historical data."""
+    from fish.services.backtest_game import HISTORICAL_PRICES, generate_strategy
+    
+    ticker = payload.get("ticker", "MPAL")
+    prompt = payload.get("prompt", "buy and hold")
+    prices = HISTORICAL_PRICES.get(ticker, [])
+    
+    if not prices:
+        raise HTTPException(404, "No price data")
+    
+    strategy = generate_strategy(prompt)
+    
+    # Simple simulation based on strategy type
+    trades = []
+    position = 0
+    entry_price = 0
+    cash = 100000
+    
+    for i in range(len(prices)):
+        c = prices[i]
+        
+        if strategy["rules"][0]["type"] == "buyhold" and i == 0:
+            position = int(cash / c["price"])
+            entry_price = c["price"]
+            cash -= position * c["price"]
+            trades.append({"date": c["date"], "action": "BUY", "price": c["price"], "qty": position, "source": "strategy"})
+        
+        elif strategy["rules"][0]["type"] == "momentum" and i > 0:
+            if c["price"] > prices[i-1]["price"] * 1.05 and position == 0:
+                position = int(cash / c["price"])
+                entry_price = c["price"]
+                cash -= position * c["price"]
+                trades.append({"date": c["date"], "action": "BUY", "price": c["price"], "qty": position, "source": "strategy"})
+            elif c["price"] < entry_price * 0.95 and position > 0:
+                pnl = (c["price"] - entry_price) * position
+                cash += position * c["price"]
+                trades.append({"date": c["date"], "action": "SELL", "price": c["price"], "qty": position, "pnl": pnl, "source": "strategy"})
+                position = 0
+    
+    final_value = cash + position * prices[-1]["price"]
+    initial_value = 100000
+    total_return = (final_value - initial_value) / initial_value * 100
+    
+    return {
+        "strategy": strategy["name"],
+        "ticker": ticker,
+        "total_return": round(total_return, 2),
+        "trades": len(trades),
+        "trade_log": trades,
+    }
+
+
+# ── A46: Trade history persistence ───────────────────────────────────────────
+
+@app.get("/api/trading/history")
+def trading_history(user_id: str = Query("chris"), limit: int = Query(50)) -> list[dict[str, Any]]:
+    """Get trade history for a user."""
+    with SessionLocal() as session:
+        trades = session.scalars(
+            select(PaperTrade).where(PaperTrade.user_id == user_id).order_by(PaperTrade.created_at.desc()).limit(limit)
+        ).all()
+        return [
+            {
+                "id": t.id, "ticker": t.ticker, "action": t.action,
+                "qty": t.qty, "price": t.price, "reason": t.reason,
+                "source": t.source, "user_decision": t.user_decision,
+                "created_at": t.created_at.isoformat(),
+            }
+            for t in trades
+        ]
+
+
+# ── A47: Strategy library ────────────────────────────────────────────────────
+
+@app.get("/api/strategies")
+def strategy_library() -> list[dict[str, Any]]:
+    """Pre-built strategy templates."""
+    from fish.services.backtest_game import STRATEGY_TEMPLATES
+    return [
+        {"id": k, "name": v["name"], "rules": v["rules"]}
+        for k, v in STRATEGY_TEMPLATES.items()
+    ]
+
+
+# ── A48: Portfolio health score ──────────────────────────────────────────────
+
+@app.get("/api/portfolio/health")
+def portfolio_health(user_id: str = Query("chris")) -> dict[str, Any]:
+    """Calculate portfolio health score (0-100)."""
+    with SessionLocal() as session:
+        stocks = session.scalars(select(Watchlist)).all()
+        portfolio = []
+        for stock in stocks:
+            notes = json.loads(stock.notes or "{}")
+            portfolio.append({
+                "ticker": stock.ticker,
+                "value": notes.get("value", 0),
+                "gain": notes.get("gain", 0),
+                "pct": notes.get("pct", 0),
+            })
+        
+        total_value = sum(p["value"] for p in portfolio)
+        total_gain = sum(p["gain"] for p in portfolio)
+        total_book = sum(p.get("value", 0) - p.get("gain", 0) for p in portfolio)
+        
+        # Scoring factors
+        return_score = min(1.0, max(0, total_gain / total_book * 5)) if total_book else 0
+        win_rate = sum(1 for p in portfolio if p["gain"] > 0) / len(portfolio) if portfolio else 0
+        
+        # Concentration penalty
+        top5 = sorted(portfolio, key=lambda x: -x["value"])[:5]
+        top5_pct = sum(p["value"] for p in top5) / total_value if total_value else 0
+        concentration_penalty = max(0, (top5_pct - 60) / 40) * 0.3
+        
+        # Diversification bonus
+        domains = set()
+        for stock in stocks:
+            domains.add(stock.sector)
+        diversification = min(1.0, len(domains) / 5) * 0.2
+        
+        # Health score
+        health = (return_score * 0.4 + win_rate * 0.3 + diversification - concentration_penalty) * 100
+        health = max(0, min(100, health))
+        
+        return {
+            "score": round(health, 1),
+            "return_score": round(return_score * 100, 1),
+            "win_rate": round(win_rate * 100, 1),
+            "concentration": round(top5_pct, 1),
+            "diversification": round(diversification * 100, 1),
+            "grade": "A" if health >= 80 else "B" if health >= 60 else "C" if health >= 40 else "D",
+        }
